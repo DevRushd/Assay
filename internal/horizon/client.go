@@ -21,6 +21,12 @@ const DefaultURL = "https://horizon.stellar.org"
 // ErrNotFound reports that Horizon has no record of the asset or account.
 var ErrNotFound = errors.New("horizon: not found")
 
+// ErrMultipleRecords reports that Horizon returned more than one record for an
+// exact code+issuer query. In Stellar, an asset is uniquely identified by
+// (code, issuer); returning multiple records violates that uniqueness rule.
+// Choosing one would be an arbitrary guess, so Assay refuses rather than guesses.
+var ErrMultipleRecords = errors.New("horizon: multiple records returned for asset")
+
 // Version is the tool version that every outbound client reports in its
 // User-Agent. Bump it alongside any scanner-version release; the API
 // documents the value in release notes.
@@ -128,6 +134,12 @@ func (c *Client) Asset(ctx context.Context, code, issuer string) (*AssetStat, er
 	}
 	if len(page.Embedded.Records) == 0 {
 		return nil, fmt.Errorf("%w: asset %s-%s", ErrNotFound, code, issuer)
+	}
+	if len(page.Embedded.Records) > 1 {
+		return nil, fmt.Errorf(
+			"%w: asset %s-%s returned %d records; expected exactly one",
+			ErrMultipleRecords, code, issuer, len(page.Embedded.Records),
+		)
 	}
 	rec := page.Embedded.Records[0]
 	if rec.AssetCode != code || rec.AssetIssuer != issuer {

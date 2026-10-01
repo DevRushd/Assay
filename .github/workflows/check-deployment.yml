@@ -1,0 +1,68 @@
+name: Deployment drift
+
+# Drift between docs/deployment.md and live chain state.
+#
+# docs/deployment.md is the record of what is deployed: the registry and gate
+# addresses, the three gate instances with their wasm hashes, and the ten
+# attestations with their severity, flags and evidence hash. Drift is silent,
+# because a stale document reads exactly like a correct one, and the drift this
+# job looks for has happened before (#149). scripts/check-deployment.sh
+# reports it and changes nothing.
+#
+# Deliberately NOT on the PR path, for the same reason as the Reproducibility
+# job above: a PR that touches no deployment state would fail or pass for
+# reasons that have nothing to do with the change under review, and an
+# unreachable RPC on the PR path would turn an infrastructure blip into a
+# blocked merge. Drift here is a deployment-time problem, not a property of
+# any diff, so it runs on a schedule and on demand and never gates merges. See
+# docs/deployment.md ("Checking for drift").
+#
+# Note: this workflow touches .github/workflows, which is maintainer-owned
+# (see scripts/merge-gate.sh), so it needs a maintainer to look at it.
+on:
+  schedule:
+    # Weekly, Tuesday 06:20 UTC — off the hour, and a day after the
+    # Reproducibility run, so the two jobs do not compete for the public
+    # testnet endpoint at the same moment.
+    - cron: "20 6 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-deployment:
+    name: Deployment drift
+    runs-on: ubuntu-latest
+    # One getLedgerEntries call, with a per-request timeout the script applies
+    # itself. Generous because a scheduled job on a cold runner is the slowest
+    # case, not because the check is expensive.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: check docs/deployment.md against the chain
+        run: |
+          set +e
+          ./scripts/check-deployment.sh 2>&1 | tee drift.log
+          rc=${PIPESTATUS[0]}
+          set -e
+
+          {
+            echo "### Deployment drift"
+            echo
+            echo '```'
+            cat drift.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Script exit codes: 0 all valid, 1 invalid or absent (drift found),
+          # 2 unknown / unparseable (inconclusive). GitHub has no neutral
+          # conclusion for a job, so inconclusive is reported as a warning with
+          # a green check: the summary says INCONCLUSIVE, not PASS, so it never
+          # reads as a clean run, and an RPC outage is not a documentation bug.
+          case "$rc" in
+            0) echo "::notice title=Deployment drift::Every documented value matches the chain." ;;
+            2) echo "::warning title=Deployment drift::Inconclusive: at least one check could not read the chain. Not a pass, not a failure; re-run when the endpoint recovers." ;;
+            *) echo "::error title=Deployment drift::Drift found (exit $rc). See the log for the check and both values; docs/deployment.md needs updating or the deployment does."; exit 1 ;;
+          esac

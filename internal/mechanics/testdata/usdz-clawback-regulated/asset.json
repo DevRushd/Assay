@@ -1,0 +1,33 @@
+{
+  "_links": {
+    "toml": {
+      "href": "https://zeam.money/.well-known/stellar.toml"
+    }
+  },
+  "asset_type": "credit_alphanum4",
+  "asset_code": "USDZ",
+  "asset_issuer": "GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR",
+  "paging_token": "USDZ_GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR_credit_alphanum4",
+  "num_claimable_balances": 0,
+  "num_liquidity_pools": 37,
+  "num_contracts": 0,
+  "accounts": {
+    "authorized": 181070,
+    "authorized_to_maintain_liabilities": 0,
+    "unauthorized": 0
+  },
+  "claimable_balances_amount": "0.0000000",
+  "liquidity_pools_amount": "42727.7257272",
+  "contracts_amount": "0.0000000",
+  "balances": {
+    "authorized": "267271.9998925",
+    "authorized_to_maintain_liabilities": "0.0000000",
+    "unauthorized": "0.0000000"
+  },
+  "flags": {
+    "auth_required": false,
+    "auth_revocable": true,
+    "auth_immutable": false,
+    "auth_clawback_enabled": true
+  }
+}

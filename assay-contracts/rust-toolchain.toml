@@ -1,0 +1,19 @@
+# Pin the Rust toolchain for the contracts so CI and local builds agree and an
+# upgrade is a deliberate commit rather than whatever `stable` happens to be
+# when the job runs. This mirrors the Go side, which pins through go.mod: a new
+# Rust release that adds a clippy lint must not be able to turn main red with no
+# code change.
+#
+# rustup reads this file automatically whenever cargo, rustc, clippy or rustfmt
+# run anywhere under `assay-contracts/`, and installs the pinned channel plus the
+# components and target below if they are missing. The deployable build needs
+# wasm32v1-none (see `contract-build` in the Makefile); rustfmt and clippy are
+# what the `cargo fmt` / `cargo clippy` CI steps use.
+#
+# To bump the pin: change the channel here, commit the change alongside any
+# resulting fmt/clippy fixes, and update the toolchain row in
+# docs/deployment.md so the deployed artifact still names what built it.
+[toolchain]
+channel = "1.98.1"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32v1-none"]

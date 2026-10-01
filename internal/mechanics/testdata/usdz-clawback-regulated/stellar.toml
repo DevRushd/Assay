@@ -1,0 +1,27 @@
+NETWORK_PASSPHRASE = "Public Global Stellar Network ; September 2015"
+VERSION = "2.6.0"
+
+[[CURRENCIES]]
+code = "USDZ"
+issuer = "GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR"
+name = "zeam USD"
+desc = "Zeam USD is backed by a basket of Tier 1 stable-coins, issued by Zeam Mint (Pty) Ltd, and operated by Zeam SA (Pty) Ltd, which is regulated by the Financial Sector Conduct Authority of South Africa (FSP 53737) and the South African Reserve Bank as a Third Party Payment Provider (SO001233)."
+anchor_asset = "USD, USDC, yUSDC, USDT"
+anchor_asset_type = "crypto"
+attestation_of_reserve = "https://zeam.money/transparency"
+is_asset_anchored = true
+status = "live"
+display_decimals = 2
+
+[DOCUMENTATION]
+ORG_NAME = "ZEAM LIMITED"
+ORG_DBA = "ZEAM MONEY"
+ORG_URL = "https://zeam.money"
+ORG_OFFICIAL_EMAIL = "admin@zeam.money"
+ORG_SUPPORT_EMAIL = "support@zeam.money"
+ORG_LICENSING_AUTHORITY = "Financial Sector Conduct Authority"
+ORG_LICENSE_NUMBER = "Multiple - see https://www.zeam.money/licences-and-registrations"
+ORG_LICENSE_TYPE = "Multiple - see https://www.zeam.money/licences-and-registrations"
+ORG_DESCRIPTION = "Zeam Money is issued by Zeam Limited (UK) and operated by Paytec Technologies B.V. (NL)"
+ORG_PHYSICAL_ADDRESS = "Coachworks Arcade, Northgate Street, Chester, United Kingdom CH1 2EY"
+ORG_GITHUB = "github.com/ZeamMoney"

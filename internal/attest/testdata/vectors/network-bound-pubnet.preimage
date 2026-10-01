@@ -1,0 +1,10 @@
+assay-evidence-v3
+asset	AQUA-GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA
+severity	0
+base_severity	0
+escalated	false
+mechanics	0
+accountability	verified
+checks	capability,mutability,reputation,sep1-domain
+network	Public Global Stellar Network ; September 2015
+evidence	horizon	https://horizon.stellar.org/assets?asset_code=AQUA&asset_issuer=GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA	issuer flags: auth_required=false auth_revocable=false auth_immutable=false auth_clawback_enabled=false

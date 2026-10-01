@@ -68,6 +68,7 @@ CRITICAL_PATHS=(
 
     # The gate itself. A PR must not be able to weaken the check that reviews it.
     "scripts/merge-gate.sh"
+    "scripts/check-codeowners.sh"                         # keeps GitHub review routing aligned with this list
     ".github/workflows"
 )
 

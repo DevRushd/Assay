@@ -76,6 +76,10 @@ pub const REFUSED_MECHANICS: u32 = MECH_CLAWBACK_ENABLED | MECH_AUTH_REVOCABLE;
 /// by construction — and any gate that reads only the mask is blind to half
 /// the severity model.
 pub const MAX_SEVERITY: u32 = 2;
+/// A documented default for the policy stored at construction. The registry is
+/// not upgradeable in place: a policy change requires a new instance behind a
+/// new address, and the docs call that out explicitly.
+pub const DEFAULT_MAX_SEVERITY: u32 = MAX_SEVERITY;
 
 /// How stale an attestation may be before this gate stops trusting it.
 ///
@@ -90,6 +94,9 @@ pub const MAX_SEVERITY: u32 = 2;
 /// this constant — a window without a re-attestation path behind it is a
 /// countdown, and this example has no refresher.
 pub const MAX_ATTESTATION_AGE: u64 = 24 * 60 * 60;
+pub const DEFAULT_MAX_ATTESTATION_AGE: u64 = MAX_ATTESTATION_AGE;
+
+pub const DEFAULT_REFUSED_MECHANICS: u32 = REFUSED_MECHANICS;
 
 // ---------------------------------------------------------------------------
 // The gate.
@@ -99,6 +106,10 @@ pub const MAX_ATTESTATION_AGE: u64 = 24 * 60 * 60;
 enum DataKey {
     /// The Assay registry this gate reads.
     Registry,
+    /// The caller's policy for severity, staleness and blocked mechanics.
+    MaxSeverity,
+    MaxAttestationAge,
+    RefusedMechanics,
     /// Deposited balance per (asset, depositor).
     Balance(Address, Address),
 }
@@ -110,16 +121,14 @@ pub enum Error {
     /// No attestation exists for this asset. The gate does not know the asset,
     /// which is not the same as the asset being safe.
     NotAttested = 1,
-    /// The newest attestation is older than [`MAX_ATTESTATION_AGE`].
+    /// The newest attestation is older than the configured freshness policy.
     AttestationStale = 2,
-    /// The issuer holds a power in [`REFUSED_MECHANICS`].
+    /// The issuer holds a power in the configured refused-mechanics mask.
     IssuerCanTakeIt = 3,
-    /// Severity exceeds [`MAX_SEVERITY`]. Kept distinct from
-    /// [`Self::IssuerCanTakeIt`] because the two mean different things to a
-    /// caller: one says the issuer can take your balance, the other says
-    /// someone has affirmatively identified this asset as malicious. A client
-    /// that cannot tell them apart cannot explain either.
+    /// Severity exceeds the configured policy ceiling.
     SeverityTooHigh = 4,
+    /// A caller supplied a policy that is outside the supported range.
+    InvalidPolicy = 5,
 }
 
 #[contract]
@@ -127,9 +136,33 @@ pub struct ExampleGate;
 
 #[contractimpl]
 impl ExampleGate {
-    /// Binds this gate to a deployed Assay registry.
-    pub fn __constructor(env: Env, registry: Address) {
+    /// Binds this gate to a deployed Assay registry and stores the gate policy.
+    ///
+    /// A policy change requires a redeploy, because Soroban instance storage is
+    /// fixed for a deployed contract. This keeps the decision explicit rather
+    /// than allowing a silent contract upgrade path.
+    pub fn __constructor(
+        env: Env,
+        registry: Address,
+        max_severity: u32,
+        max_age_secs: u64,
+        refused_mechanics: u32,
+    ) -> Result<(), Error> {
+        if max_severity > 4 {
+            return Err(Error::InvalidPolicy);
+        }
+
         env.storage().instance().set(&DataKey::Registry, &registry);
+        env.storage()
+            .instance()
+            .set(&DataKey::MaxSeverity, &max_severity);
+        env.storage()
+            .instance()
+            .set(&DataKey::MaxAttestationAge, &max_age_secs);
+        env.storage()
+            .instance()
+            .set(&DataKey::RefusedMechanics, &refused_mechanics);
+        Ok(())
     }
 
     /// Accepts a deposit, but only in an asset the issuer cannot claw back.
@@ -183,18 +216,33 @@ impl ExampleGate {
             return Err(Error::NotAttested);
         };
 
-        if env.ledger().timestamp().saturating_sub(safety.attested_at) > MAX_ATTESTATION_AGE {
+        let max_age = env
+            .storage()
+            .instance()
+            .get(&DataKey::MaxAttestationAge)
+            .unwrap_or(DEFAULT_MAX_ATTESTATION_AGE);
+        if env.ledger().timestamp().saturating_sub(safety.attested_at) > max_age {
             return Err(Error::AttestationStale);
         }
 
+        let max_severity = env
+            .storage()
+            .instance()
+            .get(&DataKey::MaxSeverity)
+            .unwrap_or(DEFAULT_MAX_SEVERITY);
         // Severity ceiling. Without this, an asset that is critical purely by
         // reputation — no capability bits set — passes the mask below and is
         // admitted. See DOGE in the module docs and docs/integrating.md.
-        if safety.severity > MAX_SEVERITY {
+        if safety.severity > max_severity {
             return Err(Error::SeverityTooHigh);
         }
 
-        if safety.flags & REFUSED_MECHANICS != 0 {
+        let refused_mechanics = env
+            .storage()
+            .instance()
+            .get(&DataKey::RefusedMechanics)
+            .unwrap_or(DEFAULT_REFUSED_MECHANICS);
+        if safety.flags & refused_mechanics != 0 {
             return Err(Error::IssuerCanTakeIt);
         }
 

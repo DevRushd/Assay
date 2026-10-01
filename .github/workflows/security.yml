@@ -1,0 +1,50 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Weekly scan so a new advisory against the pinned toolchain or module
+  # shows up without a code change. Mondays are arbitrary; the point is a
+  # bounded wait, not a specific day.
+  schedule:
+    - cron: "23 5 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout@v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # Same rationale as ci.yml: pinned to the module's own Go version
+      # rather than `stable`, so the scan matches the toolchain the code is
+      # actually built with.
+      # actions/setup-go@v6.0.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # govulncheck is first-party (golang.org/x/vuln) and pinned: a floating
+      # @latest would let the scanner's own behavior change between runs.
+      # It is invoked with `go run`, so nothing is added to go.mod.
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+
+      # Issue semantics (#131): reachable findings fail the job (the step
+      # above exits non-zero); findings present but not reachable are
+      # reported without failing. This step always runs, so an unreachable
+      # advisory is visible in the log of a red run too.
+      - name: unreachable findings are informational
+        if: ${{ !cancelled() }}
+        run: |
+          echo "govulncheck reports only vulnerabilities reachable from this"
+          echo "code. If the job above failed, the finding names the symbol"
+          echo "and call path; upgrade the toolchain or dependency that"
+          echo "provides it. Advisories in packages or modules that this code"
+          echo "does not call are informational and do not fail the scan."

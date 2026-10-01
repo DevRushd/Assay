@@ -1,0 +1,57 @@
+name: Security-adjacent report
+description: Severity inflation, attribution rendering, or a design flaw — with a routing checkpoint before it goes public.
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        **Stop if this is under-reporting.**
+        [SECURITY.md](https://github.com/use-assay/Assay/blob/main/SECURITY.md)
+        treats anything that makes a claim wrong in the dangerous direction as
+        critical: a severity **lower** than the issuer's flags justify,
+        `is_safe` true for an unattested, stale, or above-threshold asset, a
+        forged or replayed attestation accepted, a parsing bug letting a
+        stellar.toml claim an asset it does not issue. Those are reported
+        **privately** via the
+        [security advisory form](https://github.com/use-assay/Assay/security/advisories/new)
+        — a public issue about a fail-open path is notice to everyone acting on
+        the output before a fix exists, which is the one outcome this template
+        exists to prevent.
+
+
+        What **does** belong here, publicly: systematic severity *inflation* —
+        a scanner that cries wolf gets ignored, and an ignored scanner
+        protects nobody — a consumed third-party signal presented as an Assay
+        conclusion, "we could not check" rendered like "this is fine",
+        injection through issuer-controlled strings, and design flaws in the
+        ABI or the gate logic (the contract is not deployed, so there is
+        nothing live to attack).
+  - type: checkboxes
+    id: routing
+    attributes:
+      label: Routing check
+      options:
+        - label: >-
+            This report does **not** describe under-reporting or a fail-open
+            path. If it did, I stopped and filed privately via the security
+            advisory form instead.
+          required: true
+  - type: textarea
+    id: finding
+    attributes:
+      label: What you found
+      description: >-
+        What the output or the design does, what it should do, and the
+        evidence — same discipline as the bug report template: the asset, the
+        verbatim output, and what the source actually shows.
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Who is misled, and how
+      description: >-
+        These reports matter because of what a reader or an on-chain gate would
+        do with the wrong output. Say who acts on it and what the wrong version
+        costs them.
+    validations:
+      required: false

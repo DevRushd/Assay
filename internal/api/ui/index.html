@@ -141,7 +141,7 @@ async function scan() {
         <p class="note">This is not a safety result. Assay reports only what it fetched.</p></div>`;
       return;
     }
-    render(body);
+    render(body, r.headers.get('X-Assay-Undetermined') === 'true');
   } catch (err) {
     out.innerHTML = `<div class="err"><strong>Request failed.</strong> ${esc(err.message)}</div>`;
   } finally {
@@ -149,10 +149,20 @@ async function scan() {
   }
 }
 
-function render(rep) {
+function render(rep, undeterminedHeader) {
   const esc_ = esc;
+  const undeterminedBanner = (rep.undetermined || undeterminedHeader)
+    ? `<div class="err" style="border-color: var(--medium); color: var(--medium); background: var(--panel); margin-bottom: 1.5rem;"><strong>Scan Degraded (Undetermined).</strong> One or more external sources were unreachable. Findings may be incomplete.<p class="note">This is signaled via the X-Assay-Undetermined header.</p></div>`
+    : '';
   const escalated = rep.escalated
     ? `<p class="note">Escalated from <strong>${esc_(rep.base_severity)}</strong> by curated reputation evidence.</p>`
+    : '';
+
+  const staleBanner = (rep.stale || rep.state === 'stale')
+    ? `<div class="err" style="margin: 0 0 1rem 0; border-color: var(--medium); color: var(--medium);">
+        <strong>Stale verdict.</strong> ${esc_(rep.stale_reason || 'This observation is older than the policy window.')}
+        <p class="note">A stale verdict was complete when made, but cannot be relied on as a current answer.</p>
+       </div>`
     : '';
 
   const findings = rep.findings.map(f => `
@@ -171,6 +181,8 @@ function render(rep) {
     </div>`).join('');
 
   out.innerHTML = `
+${staleBanner}
+    ${undeterminedBanner}
     <div class="axes">
       <div class="card">
         <h2>Severity — issuer capability</h2>

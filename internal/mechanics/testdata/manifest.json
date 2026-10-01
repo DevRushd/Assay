@@ -1,0 +1,175 @@
+{
+  "schema_version": "1.0",
+  "dataset": "assay-mechanics-evidence",
+  "license": "CC-BY-4.0",
+  "code_license": "Apache-2.0",
+  "license_boundary": "This license applies only to this manifest and the fixture annotations authored by Assay. Source payloads remain subject to the terms of Horizon, StellarExpert, and each issuer domain.",
+  "capture_policy": {
+    "point_in_time": true,
+    "default_capture_date": "2026-08-10",
+    "source_payload_policy": "Use the committed fixture payloads only where the upstream source terms permit redistribution. StellarExpert-derived blocklist and directory records are identified by URL in this manifest; do not redistribute new raw copies without confirming current terms.",
+    "refresh": "Re-fetch each listed URL, record the UTC capture date, replace the subject fixture atomically, and rerun the evaluation before publishing a new manifest version."
+  },
+  "source_terms": [
+    {
+      "name": "Stellar Development Foundation Horizon",
+      "url": "https://www.stellar.org/terms-of-service",
+      "dataset_role": "ledger asset and account records"
+    },
+    {
+      "name": "StellarExpert",
+      "url": "https://stellar.expert/terms-of-use",
+      "dataset_role": "directory and blocked-domain reputation records"
+    },
+    {
+      "name": "Issuer domains",
+      "url": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md",
+      "dataset_role": "issuer-published SEP-1 stellar.toml records"
+    }
+  ],
+  "subjects": [
+    {
+      "fixture": "aqua-clear-verified",
+      "asset": "AQUA-GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA",
+      "label": "legitimate",
+      "base_severity": "clear",
+      "severity": "clear",
+      "escalated": false,
+      "accountability": "verified",
+      "mechanics": [],
+      "capture_date": "2026-08-10",
+      "source_urls": [
+        "https://horizon.stellar.org/assets?asset_code=AQUA&asset_issuer=GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA",
+        "https://horizon.stellar.org/accounts/GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA",
+        "https://aqua.network/.well-known/stellar.toml",
+        "https://api.stellar.expert/explorer/directory/blocked-domains/aqua.network",
+        "https://api.stellar.expert/explorer/directory/GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA"
+      ]
+    },
+    {
+      "fixture": "shx-clear-flagslocked",
+      "asset": "SHX-GDSTRSHXHGJ7ZIVRBXEYE5Q74XUVCUSEKEBR7UCHEUUEK72N7I7KJ6JH",
+      "label": "legitimate",
+      "base_severity": "clear",
+      "severity": "clear",
+      "escalated": false,
+      "accountability": "verified",
+      "mechanics": ["auth_immutable"],
+      "capture_date": "2026-08-10",
+      "source_urls": [
+        "https://horizon.stellar.org/assets?asset_code=SHX&asset_issuer=GDSTRSHXHGJ7ZIVRBXEYE5Q74XUVCUSEKEBR7UCHEUUEK72N7I7KJ6JH",
+        "https://horizon.stellar.org/accounts/GDSTRSHXHGJ7ZIVRBXEYE5Q74XUVCUSEKEBR7UCHEUUEK72N7I7KJ6JH",
+        "https://stronghold.co/.well-known/stellar.toml",
+        "https://api.stellar.expert/explorer/directory/blocked-domains/stronghold.co",
+        "https://api.stellar.expert/explorer/directory/GDSTRSHXHGJ7ZIVRBXEYE5Q74XUVCUSEKEBR7UCHEUUEK72N7I7KJ6JH"
+      ]
+    },
+    {
+      "fixture": "xrp-clear-unlocked",
+      "asset": "XRP-GBXRPL45NPHCVMFFAYZVUVFFVKSIZ362ZXFP7I2ETNQ3QKZMFLPRDTD5",
+      "label": "legitimate",
+      "base_severity": "clear",
+      "severity": "clear",
+      "escalated": false,
+      "accountability": "verified",
+      "mechanics": [],
+      "capture_date": "2026-09-25",
+      "source_urls": [
+        "https://horizon.stellar.org/assets?asset_code=XRP&asset_issuer=GBXRPL45NPHCVMFFAYZVUVFFVKSIZ362ZXFP7I2ETNQ3QKZMFLPRDTD5",
+        "https://horizon.stellar.org/accounts/GBXRPL45NPHCVMFFAYZVUVFFVKSIZ362ZXFP7I2ETNQ3QKZMFLPRDTD5",
+        "https://fchain.io/.well-known/stellar.toml",
+        "https://api.stellar.expert/explorer/directory/blocked-domains/fchain.io",
+        "https://api.stellar.expert/explorer/directory/GBXRPL45NPHCVMFFAYZVUVFFVKSIZ362ZXFP7I2ETNQ3QKZMFLPRDTD5"
+      ]
+    },
+    {
+      "fixture": "usdz-clawback-regulated",
+      "asset": "USDZ-GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR",
+      "label": "legitimate",
+      "base_severity": "high",
+      "severity": "high",
+      "escalated": false,
+      "accountability": "verified",
+      "mechanics": ["auth_revocable", "auth_clawback_enabled"],
+      "capture_date": "2026-09-27",
+      "notes": "Confirmed-legitimate clawback control asset. Issuer verified independently via the zeam.money stellar.toml, which lists USDZ under [[CURRENCIES]] with matching issuer, and via the [DOCUMENTATION] block naming ZEAM LIMITED with FSCA (South Africa) licensing.",
+      "source_urls": [
+        "https://horizon.stellar.org/assets?asset_code=USDZ&asset_issuer=GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR",
+        "https://horizon.stellar.org/accounts/GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR",
+        "https://zeam.money/.well-known/stellar.toml",
+        "https://api.stellar.expert/explorer/directory/blocked-domains/zeam.money",
+        "https://api.stellar.expert/explorer/directory/GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR"
+      ]
+    },
+    {
+      "fixture": "usdc-revocable-regulated",
+      "asset": "USDC-GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+      "label": "legitimate",
+      "base_severity": "medium",
+      "severity": "medium",
+      "escalated": false,
+      "accountability": "unverified",
+      "mechanics": ["auth_revocable", "domain_unverified"],
+      "capture_date": "2026-08-10",
+      "source_urls": [
+        "https://horizon.stellar.org/assets?asset_code=USDC&asset_issuer=GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+        "https://horizon.stellar.org/accounts/GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+        "https://circle.com/.well-known/stellar.toml",
+        "https://api.stellar.expert/explorer/directory/blocked-domains/circle.com",
+        "https://api.stellar.expert/explorer/directory/GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+      ]
+    },
+    {
+      "fixture": "berkshire-clawback-scam",
+      "asset": "BERKSHIRE-GA22QHSHQEHDJS2ZOINSC77XPPQ24G5EFRJGVEIZLKC5FAW3PQ5XNSDQ",
+      "label": "trap",
+      "base_severity": "high",
+      "severity": "critical",
+      "escalated": true,
+      "accountability": "unverified",
+      "mechanics": ["auth_revocable", "auth_clawback_enabled", "domain_unverified", "blocklisted"],
+      "capture_date": "2026-08-10",
+      "source_urls": [
+        "https://horizon.stellar.org/assets?asset_code=BERKSHIRE&asset_issuer=GA22QHSHQEHDJS2ZOINSC77XPPQ24G5EFRJGVEIZLKC5FAW3PQ5XNSDQ",
+        "https://horizon.stellar.org/accounts/GA22QHSHQEHDJS2ZOINSC77XPPQ24G5EFRJGVEIZLKC5FAW3PQ5XNSDQ",
+        "https://nasdaq.finance/.well-known/stellar.toml",
+        "https://api.stellar.expert/explorer/directory/blocked-domains/nasdaq.finance",
+        "https://api.stellar.expert/explorer/directory/GA22QHSHQEHDJS2ZOINSC77XPPQ24G5EFRJGVEIZLKC5FAW3PQ5XNSDQ"
+      ]
+    },
+    {
+      "fixture": "doge-noflags-scam",
+      "asset": "DOGE-GA22IDJNHUMC3XKUCCBFNTQIJOUBWINC5GCXHLJ2V6KZ3OWAXCULNQ7P",
+      "label": "trap",
+      "base_severity": "clear",
+      "severity": "critical",
+      "escalated": true,
+      "accountability": "unverified",
+      "mechanics": ["domain_unverified", "blocklisted"],
+      "capture_date": "2026-08-10",
+      "source_urls": [
+        "https://horizon.stellar.org/assets?asset_code=DOGE&asset_issuer=GA22IDJNHUMC3XKUCCBFNTQIJOUBWINC5GCXHLJ2V6KZ3OWAXCULNQ7P",
+        "https://horizon.stellar.org/accounts/GA22IDJNHUMC3XKUCCBFNTQIJOUBWINC5GCXHLJ2V6KZ3OWAXCULNQ7P",
+        "https://darkpool.digital/.well-known/stellar.toml",
+        "https://api.stellar.expert/explorer/directory/blocked-domains/darkpool.digital",
+        "https://api.stellar.expert/explorer/directory/GA22IDJNHUMC3XKUCCBFNTQIJOUBWINC5GCXHLJ2V6KZ3OWAXCULNQ7P"
+      ]
+    },
+    {
+      "fixture": "velo-no-home-domain",
+      "asset": "VELO-GDM4RQUQQUVSKQA7S6EM7XBZP3FCGH4Q7CL6TABQ7B2BEJ5ERARM2M5M",
+      "label": "legitimate",
+      "base_severity": "clear",
+      "severity": "clear",
+      "escalated": false,
+      "accountability": "unknown",
+      "mechanics": ["domain_unverified"],
+      "capture_date": "2026-09-28",
+      "source_urls": [
+        "https://horizon.stellar.org/assets?asset_code=VELO&asset_issuer=GDM4RQUQQUVSKQA7S6EM7XBZP3FCGH4Q7CL6TABQ7B2BEJ5ERARM2M5M",
+        "https://horizon.stellar.org/accounts/GDM4RQUQQUVSKQA7S6EM7XBZP3FCGH4Q7CL6TABQ7B2BEJ5ERARM2M5M",
+        "https://api.stellar.expert/explorer/directory/GDM4RQUQQUVSKQA7S6EM7XBZP3FCGH4Q7CL6TABQ7B2BEJ5ERARM2M5M"
+      ]
+    }
+  ]
+}

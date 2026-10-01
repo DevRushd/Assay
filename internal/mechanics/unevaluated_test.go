@@ -32,7 +32,7 @@ func TestNilStatIsUnevaluatedNotClear(t *testing.T) {
 	s := &mechanics.Subject{
 		Asset:     mechanics.Asset{Code: "NOPE", Issuer: testIssuer},
 		Stat:      nil,
-		FetchedAt: time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC),
+		ScannedAt: time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC),
 	}
 
 	f, err := mechanics.CapabilityCheck{}.Run(context.Background(), s)
@@ -54,7 +54,7 @@ func TestNilStatEngineRunIsUndeterminedNotClear(t *testing.T) {
 	s := &mechanics.Subject{
 		Asset:     mechanics.Asset{Code: "NOPE", Issuer: testIssuer},
 		Stat:      nil,
-		FetchedAt: time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC),
+		ScannedAt: time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC),
 	}
 
 	rep, err := mechanics.NewEngine().Run(context.Background(), s)

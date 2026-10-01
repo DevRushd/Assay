@@ -20,17 +20,25 @@ import (
 
 const testIssuer = "GA22IDJNHUMC3XKUCCBFNTQIJOUBWINC5GCXHLJ2V6KZ3OWAXCULNQ7P"
 
-// subject builds a Subject with no authorization flags and no home_domain, so
-// capability is Clear and reputation is the only axis in play.
+// subject builds a Subject with no authorization flags, so capability is Clear
+// and reputation is the only axis in play. It carries a home_domain and a clean
+// blocked-domain answer by default, so the reputation axis is fully consulted:
+// these tests are about a source that did answer failing, and a subject with no
+// domain would instead be the (separate) "blocklist could not even be asked"
+// case, which check_reputation_scope_test.go covers.
 func subject(mut func(*mechanics.Subject)) *mechanics.Subject {
 	fetched := time.Date(2026, 9, 5, 0, 0, 0, 0, time.UTC)
+	const domain = "doge-issuer.test"
 	s := &mechanics.Subject{
 		Asset:  mechanics.Asset{Code: "DOGE", Issuer: testIssuer},
 		Stat:   &horizon.AssetStat{AssetCode: "DOGE", AssetIssuer: testIssuer},
-		Issuer: &horizon.Account{AccountID: testIssuer},
+		Issuer: &horizon.Account{AccountID: testIssuer, HomeDomain: domain},
 
 		DirectoryURL:         "https://api.stellar.expert/explorer/directory/" + testIssuer,
 		DirectoryAttemptedAt: fetched,
+		BlockedURL:           "https://api.stellar.expert/explorer/directory/blocked-domains/" + domain,
+		Blocked:              &stellarexpert.BlockedDomain{Domain: domain, Blocked: false},
+		BlockedFetchedAt:     fetched,
 		BlockedAttemptedAt:   fetched,
 		StatFetchedAt:        fetched,
 		IssuerFetchedAt:      fetched,
@@ -162,7 +170,7 @@ func TestFailureEvidenceCarriesAttemptTime(t *testing.T) {
 		if !ev.Attempted {
 			t.Error("failure evidence is not marked Attempted: an attempt is not an answer")
 		}
-		if !ev.RetrievedAt.Equal(mustTime(t, attempted)) {
+		if !ev.RetrievedAt.Time().Equal(mustTime(t, attempted)) {
 			t.Errorf("failure evidence carries %s, want the attempt time %s", ev.RetrievedAt, attempted)
 		}
 	}
@@ -193,9 +201,9 @@ func TestEvidenceHashUnchangedAcrossTheLabelledSet(t *testing.T) {
 		// future: identical output is the property under test, because the
 		// preimage commits to claims, not to the clock.
 		for i := range rep.Evidence {
-			rep.Evidence[i].RetrievedAt = rep.Evidence[i].RetrievedAt.Add(100 * 24 * time.Hour)
+			rep.Evidence[i].RetrievedAt = mechanics.NewCanonicalTime(rep.Evidence[i].RetrievedAt.Time().Add(100 * 24 * time.Hour))
 		}
-		rep.ScannedAt = rep.ScannedAt.Add(100 * 24 * time.Hour)
+		rep.ScannedAt = mechanics.NewCanonicalTime(rep.ScannedAt.Time().Add(100 * 24 * time.Hour))
 		shifted, err := attest.FromReport(rep)
 		if err != nil {
 			t.Fatalf("%s: FromReport (shifted): %v", dir, err)

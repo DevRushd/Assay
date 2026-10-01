@@ -1,0 +1,4 @@
+# Golden preimage fixtures are hashed byte-for-byte: checkout must not
+# translate their line endings, or a Windows clone derives a different
+# evidence_hash than the committed digest.
+internal/attest/testdata/vectors/*.preimage -text

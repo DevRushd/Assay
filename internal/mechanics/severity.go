@@ -153,6 +153,13 @@ const (
 // the ledger granting a power. Engine.Run enforces this at runtime, and the
 // escalation tests enforce it across the eval fixtures. See
 // docs/severity-model.md.
+//
+// It is also the public answer to "which bits are powers": everything outside
+// this mask (auth_immutable, domain_unverified, blocklisted) is a reported
+// fact, not a power (issue #34). The Rust contract exports the same value as
+// CAPABILITY_MASK; the ABI drift test fails the build if the two ever
+// disagree. Bit positions are unchanged — existing attestations commit to
+// them.
 const CapabilityMask = MechAuthRequired | MechAuthRevocable | MechClawbackEnabled
 
 // ConfiscationMask covers the mechanics that let an issuer take a balance.

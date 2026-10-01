@@ -29,12 +29,14 @@ import (
 // the one where today's clear is not a durable answer. It is stated rather than
 // scored, because a single severity number cannot carry a conditional.
 //
-// Flag source: this check reads the issuer flags from the same Horizon /assets
-// record the capability check derives severity from, so the two cannot disagree
-// about the flag set. auth_immutable is also carried on the issuer /accounts
-// record; that is a second ingestion path Assay does not yet reconcile, and
-// taking the /assets record here keeps this finding consistent with the
-// severity next to it.
+// Flag source: this check reads the reconciled flag set the capability check
+// derives severity from — reconcileFlags resolves Horizon's two copies of the
+// issuer flags (the /assets record and the /accounts record), counting a power
+// held when either copy reports it and auth_immutable as set only when both
+// copies agree. Reading that same set here keeps this finding consistent with
+// the severity next to it, and means a lock is never claimed while a source
+// contradicts it: asserting a lock one copy disputes would hand the reader a
+// reassurance the evidence does not support.
 //
 // It emits no Evidence. The flag read is already attributed by the capability
 // finding, and the evidence_hash preimage is a sorted multiset: emitting a
@@ -73,7 +75,7 @@ func (c MutabilityCheck) Run(_ context.Context, s *Subject) (Finding, error) {
 		return f, nil
 	}
 
-	flags := s.Stat.Flags
+	flags, _ := reconcileFlags(s)
 	if flags.AuthImmutable {
 		f.Mechanics = MechFlagsLocked
 	}

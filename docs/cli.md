@@ -1,6 +1,6 @@
 # The CLI
 
-`assay` is one binary with four subcommands. All of them print human-readable
+`assay` is one binary with five subcommands. All of them print human-readable
 JSON by default; every subcommand that produces structured output also has a
 `-raw` form that prints tab-separated values, for scripts and CI.
 
@@ -8,10 +8,20 @@ JSON by default; every subcommand that produces structured output also has a
 usage:
   assay scan CODE-ISSUER          classify one asset and print the report as JSON
   assay attestation CODE-ISSUER   print the on-chain attest() arguments for one asset
+  assay verify [-hash HEX] [-raw] [PREIMAGE]
+                                  check a canonical preimage against an evidence_hash
   assay history [-guarantee] [-raw] CODE-ISSUER
                                   print the asset's observation history
-  assay serve [-addr]             serve the HTTP API and UI
+  assay serve [-addr] [-history PATH]
+                                  serve the HTTP API and UI
 ```
+
+Commands that scan also accept:
+
+- `-asset-lists URL[,URL...]` — SEP-0042 Stellar Asset Lists to consume, given
+  as a comma-separated list or repeated. **No list is used by default**: nothing
+  is hardcoded as authoritative, and no report changes unless you opt in. See
+  [asset-lists.md](asset-lists.md).
 
 ## assay scan
 
@@ -34,6 +44,53 @@ numbers going on-chain can be inspected before a key ever touches them.
 ./assay attestation -preimage CODE-ISSUER   # + the bytes the hash commits to
 ./assay attestation -raw CODE-ISSUER  # just `SEVERITY<TAB>FLAGS<TAB>HASH`
 ```
+
+## assay verify
+
+Checks a canonical preimage against an `evidence_hash`. It is the third-party
+half of `attestation`: the attester publishes the bytes with
+`assay attestation -preimage`, the registry stores the hash, and `verify`
+decides whether the two correspond. It replaces the two commands and a human
+comparing hex that verification used to be.
+
+It reaches nothing. The preimage names its own asset, and the hash either
+matches these bytes or it does not. The preimage is read from a file, or from
+stdin when the argument is omitted or `-`.
+
+```
+./assay verify -hash 0x688453bd… preimage.txt   # verdict for a published preimage
+./assay verify -hash "$(cat digest.txt)" < preimage.txt
+./assay attestation -preimage CODE-ISSUER | jq -r .preimage | ./assay verify -hash 0x688453bd…
+./assay verify -raw -hash 0x688453bd… preimage.txt   # just the recomputed hash
+```
+
+Flags:
+
+- `-hash` — the `evidence_hash` to check against, 64 hex characters, with or
+  without a `0x` prefix and in either case. Omitted, the command prints the hash
+  the bytes produce, which is the value to compare against what is stored.
+- `-asset` — also require the preimage to be for this `CODE-ISSUER`, so a
+  correct hash for the wrong asset cannot pass.
+- `-raw` — print only the recomputed hash.
+- `-quiet` — print nothing and report the verdict through the exit status alone.
+
+Semantics:
+
+- **match** — JSON with `match: true`, exit 0.
+- **mismatch** — JSON carrying both `computed` and `claimed`, exit non-zero.
+  Those two values are the whole answer, so they are printed before the failure.
+- **malformed hash** — refused as its own error rather than reported as a
+  mismatch, so a truncated or mistyped hash is not mistaken for a broken
+  attestation.
+- **unreadable header** — noted on stderr, and the hash is still checked. The
+  bytes are what the hash covers, so a cosmetic problem must not hide a real
+  mismatch.
+
+An unrecognised version line is a note rather than a failure, but it is not
+harmless: the version is inside the hash, so a version this build does not know
+reports itself rather than being compared against v1. A v1 preimage binds no
+check set and is reported as `unknown`, never as complete — the rule
+`docs/contract-interface.md` sets out.
 
 ## assay history
 
@@ -74,8 +131,17 @@ Semantics:
 ## assay serve
 
 Serves the HTTP API and UI. The API exposes the same reports the CLI prints;
-see `docs/integrating.md` for what a consumer reads out of it.
+see `docs/integrating.md` for what a consumer reads out of it, and
+[history.md](history.md) for the observation history endpoint.
 
 ```
 ./assay serve -addr :8080
+./assay serve -addr :8080 -history /var/lib/assay/history.jsonl
 ```
+
+Each successful `GET /api/v1/scan` records an observation, and
+`GET /api/v1/history?asset=CODE-ISSUER` returns them in time order with the
+derived transitions. `-history` points that store at an append-only JSON Lines
+log so it survives a restart; without it, history is in memory and lost when the
+process exits. The default retention is 256 observations per asset and the
+policy is in [history.md](history.md).

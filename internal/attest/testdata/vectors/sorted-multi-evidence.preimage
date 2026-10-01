@@ -5,6 +5,7 @@ base_severity	0
 escalated	false
 mechanics	0
 accountability	verified
+checks	
 evidence	horizon	https://horizon.stellar.org/assets?asset_code=AQUA&asset_issuer=GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA	issuer flags: auth_required=false auth_revocable=false auth_immutable=false auth_clawback_enabled=false
 evidence	stellar.expert/blocked-domains	https://api.stellar.expert/explorer/directory/blocked-domains/aqua.network	domain "aqua.network" blocked=false
 evidence	stellar.toml	https://aqua.network/.well-known/stellar.toml	CURRENCIES claims AQUA-GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA

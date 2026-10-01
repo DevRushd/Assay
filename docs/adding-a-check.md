@@ -61,7 +61,9 @@ type Subject struct {
 	Toml            *sep1.Doc  // nil if it did not resolve; carries its own FetchedAt
 	TomlURL         string
 	TomlErr         string     // why it did not, verbatim
+	TomlRefused     bool       // TomlErr is a host-policy refusal, not an outage
 	TomlAttemptedAt time.Time  // when the fetch was attempted
+	TomlLinked      *sep1.LinkedResolution // per-currency links followed; nil if none
 
 	Directory            *stellarexpert.DirectoryEntry
 	DirectoryURL         string
@@ -73,6 +75,7 @@ type Subject struct {
 	BlockedErr           string
 	BlockedFetchedAt     time.Time
 	BlockedAttemptedAt   time.Time
+	BlockedSkipped       string     // set when no domain existed to key the lookup on
 
 	ScannedAt time.Time // when the scan started
 }
@@ -143,24 +146,119 @@ blocklist are inputs. If you find yourself writing a scam heuristic over domain
 names, stop — that layer exists and is better maintained than anything we would
 write.
 
-## Fixtures
+## Capturing a fixture
 
-Capture from live sources into `internal/mechanics/testdata/<case-name>/`:
+A fixture is evidence, so it has to be re-fetchable: someone else must be able
+to pull the same URL and get the same answer. Capture from live public sources
+into `internal/mechanics/testdata/<case-name>/`. A **subject** is the directory;
+the files inside it are the per-source records below. Name the directory for the
+case it pins (`usdc-revocable-regulated`), not the asset code alone.
 
-| File | Contents |
-| --- | --- |
-| `asset.json` | one Horizon `/assets` record |
-| `account.json` | the issuer's `/accounts` record |
-| `stellar.toml` | the toml, when it resolves |
-| `stellar.toml.status` | the HTTP status, when it does not |
-| `directory.json` | StellarExpert directory entry, if listed |
-| `blocked.json` | blocked-domain lookup result |
+### What a subject contains
 
-Record every source URL in
-[`testdata/PROVENANCE.md`](../internal/mechanics/testdata/PROVENANCE.md) with
-the capture date. `loadSubject` in `eval_test.go` rebuilds a `Subject` using the
-same decoders the live fetchers use, so a fixture that parses in the test is one
-the real client would have accepted.
+| File | Source URL | When to include it |
+| --- | --- | --- |
+| `asset.json` | `https://horizon.stellar.org/assets?asset_code=<CODE>&asset_issuer=<ISSUER>` | always |
+| `account.json` | `https://horizon.stellar.org/accounts/<ISSUER>` | always |
+| `stellar.toml` | `https://<home_domain>/.well-known/stellar.toml` | the toml resolves |
+| `stellar.toml.status` | same URL as above | the toml does **not** resolve |
+| `directory.json` | `https://api.stellar.expert/explorer/directory/<ISSUER>` | StellarExpert returns an entry |
+| `blocked.json` | `https://api.stellar.expert/explorer/directory/blocked-domains/<home_domain>` | the issuer has a `home_domain` |
+
+- `<CODE>` and `<ISSUER>` are the two halves of the asset's `CODE-ISSUER`.
+- `<home_domain>` is the `home_domain` field of the **`account.json` you just
+  captured**, not the domain you expect it to be.
+- `stellar.toml` and `stellar.toml.status` are mutually exclusive: exactly one
+  of them exists in a subject whose issuer publishes a `home_domain`.
+
+The loader, [`internal/eval/load.go`](../internal/eval/load.go), reads these
+files with the same decoders the live fetchers use. So a fixture that parses in
+the test is one the real client would have accepted. It also means the failure
+mode to watch for is silence: a file the loader does not expect, or a missing
+one, does not raise — it produces a `Subject` with that source `nil`. Handle
+the error cases below instead of letting a gap render as a clean result.
+
+### Fetching the records
+
+Fetch every source for a subject in one sitting, so the files describe one point
+in time. Save the response body byte-for-byte under the file name above:
+
+```sh
+DIR=internal/mechanics/testdata/<case-name>
+mkdir -p "$DIR"
+
+curl -fsS "https://horizon.stellar.org/assets?asset_code=<CODE>&asset_issuer=<ISSUER>" -o "$DIR/asset.json"
+curl -fsS "https://horizon.stellar.org/accounts/<ISSUER>"                                    -o "$DIR/account.json"
+curl -fsS "https://api.stellar.expert/explorer/directory/<ISSUER>"                            -o "$DIR/directory.json"
+curl -fsS "https://api.stellar.expert/explorer/directory/blocked-domains/<home_domain>"       -o "$DIR/blocked.json"
+curl -fsS "https://<home_domain>/.well-known/stellar.toml"                                    -o "$DIR/stellar.toml"
+```
+
+- Do not reformat the responses, reorder keys, or trim the toml. The one
+exception is a toml that is large for reasons unrelated to the subject: it may
+be abridged to the entries that matter, with the abridgement stated in the
+provenance row (see `usdz-clawback-regulated` in `PROVENANCE.md`). When in
+doubt, keep the whole file.
+- `blocked.json` is a positive answer even when it is
+`{"domain":"…","blocked":false}` — the domain was checked and is not blocked.
+Keep it.
+- A StellarExpert directory lookup that answers **404 (not listed)** is an
+answer, so there is no `directory.json` to write. That is different from the
+source erroring, below.
+
+### When a source errors at capture time
+
+A source that fails is recorded as a failure, never dropped: an omitted file
+reads as "not asked" (or, for reputation, "not listed"), which can be the
+opposite of what happened.
+
+- **The issuer toml does not resolve.** This is the case the `.status`
+  convention exists for. Write the HTTP status code into `stellar.toml.status`
+  — `404` when the server answered that, or `000` when the request never
+  completed (DNS failure, connection refused, timeout; `curl` exit 6, 7 or 28).
+  Write the number alone, no body, and do not also write `stellar.toml`. The
+  loader turns it into `TomlErr = "status 404"`, which is what the live fetcher
+  reports, so the check sees "asked and failed" rather than "never asked".
+  Existing examples: `usdc-revocable-regulated` (404), `doge-noflags-scam`
+  (000).
+- **Horizon `/assets` or `/accounts` errors.** There is no subject without
+  them — the ledger record is the capability read, and inventing one would be
+  exactly the placeholder CONTRIBUTING.md forbids. Re-capture when the source is
+  back; do not commit a directory missing either file.
+- **StellarExpert directory or blocked-domains errors (as opposed to answering
+  "not listed").** The loader currently has no `.status` channel for these: an
+  absent `directory.json` and a failed lookup both produce a `nil` source with
+  no error. So do not silently omit an errored lookup. Retry the capture, and if
+  the source stays down, leave the subject out of the corpus until it answers —
+  note the gap in the PR rather than committing a partial subject. Giving these
+  sources the same `.status` treatment as the toml is capture tooling, tracked
+  separately.
+- Either way, the failure is part of the provenance row below, including the
+  status code when you wrote a `.status` file.
+
+### Recording provenance
+
+Two records are updated together, in the same commit:
+
+1. [`internal/mechanics/testdata/PROVENANCE.md`](../internal/mechanics/testdata/PROVENANCE.md)
+   — append one row per file, `<case-name>/<file>` → the exact URL it came from.
+   Annotate the row with `(HTTP 404)` for a `.status` file and with
+   `(captured YYYY-MM-DD)` when the subject's capture date is not the table's
+   default. State any toml abridgement here.
+2. [`internal/mechanics/testdata/manifest.json`](../internal/mechanics/testdata/manifest.json)
+   — add the subject to `subjects[]`: `fixture` (directory name), `asset`
+   (`CODE-ISSUER`), `label` (`legitimate` or `trap`), the measured
+   `base_severity`, `severity`, `escalated`, `accountability` and `mechanics`,
+   `capture_date` in UTC, every `source_urls` entry from the table above, and a
+   `notes` string when the label needs justifying. The label criteria and the
+   refresh pipeline are in
+   [docs/eval.md](eval.md#dataset-labeling-and-refresh); never overwrite an old
+   capture without preserving its date and provenance.
+
+A subject is not ready until both records exist and the loader replays it. Then
+add the eval case as described in the next section, and see
+["Adding a subject"](eval.md#adding-a-subject) in `docs/eval.md` for the labelled
+set's own rules.
 
 ## The eval is not optional
 
@@ -193,6 +291,16 @@ number change.
 ```
 
 Then record the result and the reasoning in [docs/eval.md](eval.md).
+
+### Verifying the eval
+
+After adding a subject, run `make eval` and confirm the confusion matrix
+shows agreement for the new subject's severity level and checks. See the
+**Running the evaluation** section in [docs/eval.md](eval.md) for how to
+interpret the output. A disagreement may indicate the label is wrong
+rather than the code — check the provenance before assuming the classifier
+is at fault. See the section on **A disagreement may indicate a wrong label**
+in [docs/eval.md](eval.md).
 
 ## Verify before you encode
 
@@ -228,7 +336,7 @@ make fmt     # gofmt -w .
 - [ ] Severity capability-only; escalation-only findings set `Escalation: true`
 - [ ] Consumed signals attributed as `Evidence` with source URL
 - [ ] Reasoning states the raw capability
-- [ ] Fixtures captured, provenance recorded
+- [ ] Fixtures captured per [Capturing a fixture](#capturing-a-fixture), provenance recorded in `PROVENANCE.md` and `manifest.json`
 - [ ] Eval subjects for a true positive **and** a legitimate use
 - [ ] `docs/eval.md` updated
 - [ ] Live-source verification cited in the PR

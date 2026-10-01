@@ -26,7 +26,10 @@ fn setup() -> Fixture<'static> {
     let registry = RegistryClient::new(&env, &registry_id);
     registry.init(&Address::generate(&env));
 
-    let gate_id = env.register(ExampleGate, (registry_id,));
+    let gate_id = env.register(
+        ExampleGate,
+        (registry_id, DEFAULT_MAX_SEVERITY, DEFAULT_MAX_ATTESTATION_AGE, DEFAULT_REFUSED_MECHANICS),
+    );
     let gate = ExampleGateClient::new(&env, &gate_id);
 
     Fixture {
@@ -184,4 +187,48 @@ fn severity_above_ceiling_is_refused() {
         f.gate.try_deposit(&asset, &Address::generate(&f.env), &100),
         Err(Ok(Error::SeverityTooHigh))
     );
+}
+
+// ---------------------------------------------------------------------------
+// Fail-closed claims from docs/fail-closed.md (#108)
+// ---------------------------------------------------------------------------
+
+/// C7: every non-affirmative state is refused even with the gate's freshness
+/// requirement disabled (`MAX_ATTESTATION_AGE` is the contract's policy, but
+/// these calls simulate an infinitely fresh registry). `None`, above-ceiling,
+/// refused bits, and confiscation capability each refuse independently of the
+/// others, so no single staleness hole can turn a refusal into an admission.
+#[test]
+fn fail_closed_every_non_affirmative_state_refused_without_freshness() {
+    let f = setup();
+
+    let unattested = Address::generate(&f.env);
+    let critical = Address::generate(&f.env);
+    let confiscatable = Address::generate(&f.env);
+    let freezable = Address::generate(&f.env);
+    let clean = Address::generate(&f.env);
+
+    // No re-attestation of `clean`: it stays the only admitted asset.
+    f.registry
+        .attest(&critical, &SEVERITY_CRITICAL, &0, &hash(&f.env));
+    f.registry.attest(
+        &confiscatable,
+        &SEVERITY_HIGH,
+        &MECH_CLAWBACK_ENABLED,
+        &hash(&f.env),
+    );
+    f.registry.attest(
+        &freezable,
+        &SEVERITY_MEDIUM,
+        &MECH_AUTH_REVOCABLE,
+        &hash(&f.env),
+    );
+    f.registry
+        .attest(&clean, &SEVERITY_CLEAR, &0, &hash(&f.env));
+
+    assert!(!f.gate.would_admit(&unattested));
+    assert!(!f.gate.would_admit(&critical));
+    assert!(!f.gate.would_admit(&confiscatable));
+    assert!(!f.gate.would_admit(&freezable));
+    assert!(f.gate.would_admit(&clean));
 }

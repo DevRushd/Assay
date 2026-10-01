@@ -1,0 +1,9 @@
+{
+  "asset": {"code": "BERKSHIRE", "issuer": "GA22QHSHQEHDJS2ZOINSC77XPPQ24G5EFRJGVEIZLKC5FAW3PQ5XNSDQ"},
+  "at": "2026-09-16T12:00:00Z",
+  "mechanics": 6,
+  "base_severity": "high",
+  "severity": "high",
+  "undetermined": true,
+  "undetermined_checks": ["reputation"]
+}
