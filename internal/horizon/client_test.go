@@ -114,6 +114,25 @@ func TestAssetNotFound(t *testing.T) {
 	}
 }
 
+func TestAssetMultipleRecordsErrors(t *testing.T) {
+	code, issuer := "AQUA", "GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		// Return two records for the exact code/issuer
+		_, _ = w.Write([]byte(`{"_embedded":{"records":[` + assetJSON(code, issuer) + `,` + assetJSON(code, issuer) + `]}}`))
+	}))
+	t.Cleanup(srv.Close)
+	c := horizon.New(srv.URL)
+
+	asset, err := c.Asset(context.Background(), code, issuer)
+	if asset != nil {
+		t.Fatalf("expected error on multiple records, got asset %+v", asset)
+	}
+	if !errors.Is(err, horizon.ErrMultipleRecords) {
+		t.Fatalf("Asset error = %v, want ErrMultipleRecords", err)
+	}
+}
+
 func TestAssetMismatchErrors(t *testing.T) {
 	code, issuer := "AQUA", "GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA"
 	otherCode, otherIssuer := "WRONG", "GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA"

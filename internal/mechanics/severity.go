@@ -1,5 +1,7 @@
 package mechanics
 
+import "fmt"
+
 // Severity is Assay's risk level for an asset.
 //
 // Severity is CAPABILITY-ONLY. It answers exactly one question: what is the
@@ -47,6 +49,21 @@ const (
 	// reading flags; it means a curated source has affirmatively identified
 	// this issuer or its domain as malicious.
 	Critical Severity = 4
+
+	// Unevaluated means the issuer's authorization flags were never read, so
+	// no capability statement exists. It is deliberately not zero: a nil
+	// Subject.Stat must not render as Clear, because Clear is the safest value
+	// in the ABI and "could not assess" would then be indistinguishable from
+	// "assessed and found no powers". Unevaluated is not a severity level and
+	// is not part of the on-chain ABI: attest.FromReport refuses any report
+	// carrying it (ErrUnevaluated), and the safety-registry contract rejects
+	// severity > SEVERITY_CRITICAL at write time as a second backstop. It
+	// exists so that an unread flag can never be serialized as a permissive
+	// answer. See docs/severity-model.md, "What unevaluated means".
+	//
+	// The value 5 is chosen to sit outside the ABI's 0..4 range so that
+	// accidental serialization is detectable rather than silently meaningful.
+	Unevaluated Severity = 5
 )
 
 // String returns the lowercase level name used in the API and UI.
@@ -62,6 +79,8 @@ func (s Severity) String() string {
 		return "high"
 	case Critical:
 		return "critical"
+	case Unevaluated:
+		return "unevaluated"
 	default:
 		return "unknown"
 	}
@@ -70,6 +89,33 @@ func (s Severity) String() string {
 // MarshalJSON renders severity as its level name.
 func (s Severity) MarshalJSON() ([]byte, error) {
 	return []byte(`"` + s.String() + `"`), nil
+}
+
+// UnmarshalJSON parses the level name MarshalJSON emits.
+//
+// Marshal and unmarshal have to be symmetric, or a stored report document is
+// a one-way format: it could be written but never read back. The parse is
+// strict — anything that is not one of the five level names is an error
+// rather than a zero value, because a report whose severity cannot be parsed
+// must fail loudly, not silently read as clear. "unknown" is likewise
+// rejected: MarshalJSON only emits it for an out-of-range severity, which is
+// a bug state no report should be re-read into existence.
+func (s *Severity) UnmarshalJSON(b []byte) error {
+	switch string(b) {
+	case `"clear"`:
+		*s = Clear
+	case `"low"`:
+		*s = Low
+	case `"medium"`:
+		*s = Medium
+	case `"high"`:
+		*s = High
+	case `"critical"`:
+		*s = Critical
+	default:
+		return fmt.Errorf("mechanics: unknown severity %s", b)
+	}
+	return nil
 }
 
 // Mechanic is a bit in the mechanics bitset. The bit positions are part of the
@@ -98,6 +144,23 @@ const (
 	// is_authorized unset: the holder cannot currently transact.
 	MechTrustlineDeauthorized Mechanic = 1 << 7
 )
+
+// CapabilityMask covers the mechanics that are issuer powers over holders:
+// the bits a consumer masks out of the report bitset to read the capability
+// the issuer holds on the ledger. It exists to state the escalation invariant
+// in code rather than as convention — a finding marked Escalation must carry
+// none of these bits, because reputation raising a level must never read as
+// the ledger granting a power. Engine.Run enforces this at runtime, and the
+// escalation tests enforce it across the eval fixtures. See
+// docs/severity-model.md.
+//
+// It is also the public answer to "which bits are powers": everything outside
+// this mask (auth_immutable, domain_unverified, blocklisted) is a reported
+// fact, not a power (issue #34). The Rust contract exports the same value as
+// CAPABILITY_MASK; the ABI drift test fails the build if the two ever
+// disagree. Bit positions are unchanged — existing attestations commit to
+// them.
+const CapabilityMask = MechAuthRequired | MechAuthRevocable | MechClawbackEnabled
 
 // ConfiscationMask covers the mechanics that let an issuer take a balance.
 // Any asset matching this mask has severity >= High by construction.

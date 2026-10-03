@@ -1,0 +1,585 @@
+{
+  "version": "v0.1.0",
+  "generated_at": "2026-09-29T14:38:45.664010184Z",
+  "subjects": [
+    {
+      "dir": "aqua-clear-verified",
+      "asset": "AQUA-GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA",
+      "severity": "clear",
+      "base_severity": "clear",
+      "escalated": false,
+      "undetermined": false,
+      "mechanics": null,
+      "accountability": "verified",
+      "checks": [
+        "capability",
+        "mutability",
+        "reputation",
+        "sep1-domain"
+      ],
+      "findings": [
+        {
+          "check": "capability",
+          "severity": "clear",
+          "escalation": false,
+          "undetermined": false,
+          "mechanics": null
+        },
+        {
+          "check": "mutability",
+          "severity": "clear",
+          "escalation": false,
+          "undetermined": false,
+          "mechanics": null
+        },
+        {
+          "check": "sep1-domain",
+          "severity": "clear",
+          "escalation": false,
+          "undetermined": false,
+          "mechanics": null
+        },
+        {
+          "check": "reputation",
+          "severity": "clear",
+          "escalation": true,
+          "undetermined": false,
+          "mechanics": null
+        }
+      ],
+      "evidence": [
+        {
+          "source": "horizon",
+          "url": "https://horizon.stellar.org/assets?asset_code=AQUA\u0026asset_issuer=GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA",
+          "claim": "issuer flags: auth_required=false auth_revocable=false auth_immutable=false auth_clawback_enabled=false"
+        },
+        {
+          "source": "stellar.toml",
+          "url": "https://aqua.network/.well-known/stellar.toml",
+          "claim": "CURRENCIES claims AQUA-GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA"
+        },
+        {
+          "source": "stellar.expert/directory",
+          "url": "https://api.stellar.expert/explorer/directory/GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA",
+          "claim": "listed as \"AQUA Issuer\" (domain \"aqua.network\", tags: anchor, issuer)"
+        },
+        {
+          "source": "stellar.expert/blocked-domains",
+          "url": "https://api.stellar.expert/explorer/directory/blocked-domains/aqua.network",
+          "claim": "domain \"aqua.network\" blocked=false"
+        }
+      ]
+    },
+    {
+      "dir": "shx-clear-flagslocked",
+      "asset": "SHX-GDSTRSHXHGJ7ZIVRBXEYE5Q74XUVCUSEKEBR7UCHEUUEK72N7I7KJ6JH",
+      "severity": "clear",
+      "base_severity": "clear",
+      "escalated": false,
+      "undetermined": false,
+      "mechanics": [
+        "auth_immutable"
+      ],
+      "accountability": "verified",
+      "checks": [
+        "capability",
+        "mutability",
+        "reputation",
+        "sep1-domain"
+      ],
+      "findings": [
+        {
+          "check": "capability",
+          "severity": "clear",
+          "escalation": false,
+          "undetermined": false,
+          "mechanics": null
+        },
+        {
+          "check": "mutability",
+          "severity": "clear",
+          "escalation": false,
+          "undetermined": false,
+          "mechanics": [
+            "auth_immutable"
+          ]
+        },
+        {
+          "check": "sep1-domain",
+          "severity": "clear",
+          "escalation": false,
+          "undetermined": false,
+          "mechanics": null
+        },
+        {
+          "check": "reputation",
+          "severity": "clear",
+          "escalation": true,
+          "undetermined": false,
+          "mechanics": null
+        }
+      ],
+      "evidence": [
+        {
+          "source": "horizon",
+          "url": "https://horizon.stellar.org/assets?asset_code=SHX\u0026asset_issuer=GDSTRSHXHGJ7ZIVRBXEYE5Q74XUVCUSEKEBR7UCHEUUEK72N7I7KJ6JH",
+          "claim": "issuer flags: auth_required=false auth_revocable=false auth_immutable=true auth_clawback_enabled=false"
+        },
+        {
+          "source": "stellar.toml",
+          "url": "https://stronghold.co/.well-known/stellar.toml",
+          "claim": "CURRENCIES claims SHX-GDSTRSHXHGJ7ZIVRBXEYE5Q74XUVCUSEKEBR7UCHEUUEK72N7I7KJ6JH"
+        },
+        {
+          "source": "stellar.expert/directory",
+          "url": "https://api.stellar.expert/explorer/directory/GDSTRSHXHGJ7ZIVRBXEYE5Q74XUVCUSEKEBR7UCHEUUEK72N7I7KJ6JH",
+          "claim": "listed as \"Stronghold\" (domain \"stronghold.co\", tags: issuer)"
+        },
+        {
+          "source": "stellar.expert/blocked-domains",
+          "url": "https://api.stellar.expert/explorer/directory/blocked-domains/stronghold.co",
+          "claim": "domain \"stronghold.co\" blocked=false"
+        }
+      ]
+    },
+    {
+      "dir": "xrp-clear-unlocked",
+      "asset": "XRP-GBXRPL45NPHCVMFFAYZVUVFFVKSIZ362ZXFP7I2ETNQ3QKZMFLPRDTD5",
+      "severity": "clear",
+      "base_severity": "clear",
+      "escalated": false,
+      "undetermined": false,
+      "mechanics": null,
+      "accountability": "verified",
+      "checks": [
+        "capability",
+        "mutability",
+        "reputation",
+        "sep1-domain"
+      ],
+      "findings": [
+        {
+          "check": "capability",
+          "severity": "clear",
+          "escalation": false,
+          "undetermined": false,
+          "mechanics": null
+        },
+        {
+          "check": "mutability",
+          "severity": "clear",
+          "escalation": false,
+          "undetermined": false,
+          "mechanics": null
+        },
+        {
+          "check": "sep1-domain",
+          "severity": "clear",
+          "escalation": false,
+          "undetermined": false,
+          "mechanics": null
+        },
+        {
+          "check": "reputation",
+          "severity": "clear",
+          "escalation": true,
+          "undetermined": false,
+          "mechanics": null
+        }
+      ],
+      "evidence": [
+        {
+          "source": "horizon",
+          "url": "https://horizon.stellar.org/assets?asset_code=XRP\u0026asset_issuer=GBXRPL45NPHCVMFFAYZVUVFFVKSIZ362ZXFP7I2ETNQ3QKZMFLPRDTD5",
+          "claim": "issuer flags: auth_required=false auth_revocable=false auth_immutable=false auth_clawback_enabled=false"
+        },
+        {
+          "source": "stellar.toml",
+          "url": "https://fchain.io/.well-known/stellar.toml",
+          "claim": "CURRENCIES claims XRP-GBXRPL45NPHCVMFFAYZVUVFFVKSIZ362ZXFP7I2ETNQ3QKZMFLPRDTD5"
+        },
+        {
+          "source": "stellar.expert/directory",
+          "url": "https://api.stellar.expert/explorer/directory/GBXRPL45NPHCVMFFAYZVUVFFVKSIZ362ZXFP7I2ETNQ3QKZMFLPRDTD5",
+          "claim": "listed as \"Firefly\" (domain \"fchain.io\", tags: issuer, anchor)"
+        },
+        {
+          "source": "stellar.expert/blocked-domains",
+          "url": "https://api.stellar.expert/explorer/directory/blocked-domains/fchain.io",
+          "claim": "domain \"fchain.io\" blocked=false"
+        }
+      ]
+    },
+    {
+      "dir": "usdz-clawback-regulated",
+      "asset": "USDZ-GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR",
+      "severity": "high",
+      "base_severity": "high",
+      "escalated": false,
+      "undetermined": false,
+      "mechanics": [
+        "auth_revocable",
+        "auth_clawback_enabled"
+      ],
+      "accountability": "verified",
+      "checks": [
+        "capability",
+        "mutability",
+        "reputation",
+        "sep1-domain"
+      ],
+      "findings": [
+        {
+          "check": "capability",
+          "severity": "high",
+          "escalation": false,
+          "undetermined": false,
+          "mechanics": [
+            "auth_revocable",
+            "auth_clawback_enabled"
+          ]
+        },
+        {
+          "check": "mutability",
+          "severity": "clear",
+          "escalation": false,
+          "undetermined": false,
+          "mechanics": null
+        },
+        {
+          "check": "sep1-domain",
+          "severity": "clear",
+          "escalation": false,
+          "undetermined": false,
+          "mechanics": null
+        },
+        {
+          "check": "reputation",
+          "severity": "clear",
+          "escalation": true,
+          "undetermined": false,
+          "mechanics": null
+        }
+      ],
+      "evidence": [
+        {
+          "source": "horizon",
+          "url": "https://horizon.stellar.org/assets?asset_code=USDZ\u0026asset_issuer=GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR",
+          "claim": "issuer flags: auth_required=false auth_revocable=true auth_immutable=false auth_clawback_enabled=true"
+        },
+        {
+          "source": "stellar.toml",
+          "url": "https://zeam.money/.well-known/stellar.toml",
+          "claim": "CURRENCIES claims USDZ-GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR"
+        },
+        {
+          "source": "stellar.expert/directory",
+          "url": "https://api.stellar.expert/explorer/directory/GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR",
+          "claim": "listed as \"Zeam.Money\" (domain \"zeam.money\", tags: issuer)"
+        },
+        {
+          "source": "stellar.expert/blocked-domains",
+          "url": "https://api.stellar.expert/explorer/directory/blocked-domains/zeam.money",
+          "claim": "domain \"zeam.money\" blocked=false"
+        }
+      ]
+    },
+    {
+      "dir": "usdc-revocable-regulated",
+      "asset": "USDC-GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+      "severity": "medium",
+      "base_severity": "medium",
+      "escalated": false,
+      "undetermined": false,
+      "mechanics": [
+        "auth_revocable",
+        "domain_unverified"
+      ],
+      "accountability": "unverified",
+      "checks": [
+        "capability",
+        "mutability",
+        "reputation",
+        "sep1-domain"
+      ],
+      "findings": [
+        {
+          "check": "capability",
+          "severity": "medium",
+          "escalation": false,
+          "undetermined": false,
+          "mechanics": [
+            "auth_revocable"
+          ]
+        },
+        {
+          "check": "mutability",
+          "severity": "clear",
+          "escalation": false,
+          "undetermined": false,
+          "mechanics": null
+        },
+        {
+          "check": "sep1-domain",
+          "severity": "clear",
+          "escalation": false,
+          "undetermined": false,
+          "mechanics": [
+            "domain_unverified"
+          ]
+        },
+        {
+          "check": "reputation",
+          "severity": "clear",
+          "escalation": true,
+          "undetermined": false,
+          "mechanics": null
+        }
+      ],
+      "evidence": [
+        {
+          "source": "horizon",
+          "url": "https://horizon.stellar.org/assets?asset_code=USDC\u0026asset_issuer=GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+          "claim": "issuer flags: auth_required=false auth_revocable=true auth_immutable=false auth_clawback_enabled=false"
+        },
+        {
+          "source": "horizon",
+          "url": "https://horizon.stellar.org/accounts/GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+          "claim": "home_domain \"circle.com\""
+        },
+        {
+          "source": "stellar.expert/directory",
+          "url": "https://api.stellar.expert/explorer/directory/GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+          "claim": "listed under domain \"centre.io\""
+        },
+        {
+          "source": "stellar.expert/directory",
+          "url": "https://api.stellar.expert/explorer/directory/GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+          "claim": "listed as \"Centre\" (domain \"centre.io\", tags: anchor, issuer)"
+        },
+        {
+          "source": "stellar.expert/blocked-domains",
+          "url": "https://api.stellar.expert/explorer/directory/blocked-domains/circle.com",
+          "claim": "domain \"circle.com\" blocked=false"
+        }
+      ]
+    },
+    {
+      "dir": "berkshire-clawback-scam",
+      "asset": "BERKSHIRE-GA22QHSHQEHDJS2ZOINSC77XPPQ24G5EFRJGVEIZLKC5FAW3PQ5XNSDQ",
+      "severity": "critical",
+      "base_severity": "high",
+      "escalated": true,
+      "undetermined": false,
+      "mechanics": [
+        "auth_revocable",
+        "auth_clawback_enabled",
+        "domain_unverified",
+        "blocklisted"
+      ],
+      "accountability": "unverified",
+      "checks": [
+        "capability",
+        "mutability",
+        "reputation",
+        "sep1-domain"
+      ],
+      "findings": [
+        {
+          "check": "reputation",
+          "severity": "critical",
+          "escalation": true,
+          "undetermined": false,
+          "mechanics": [
+            "blocklisted"
+          ]
+        },
+        {
+          "check": "capability",
+          "severity": "high",
+          "escalation": false,
+          "undetermined": false,
+          "mechanics": [
+            "auth_revocable",
+            "auth_clawback_enabled"
+          ]
+        },
+        {
+          "check": "mutability",
+          "severity": "clear",
+          "escalation": false,
+          "undetermined": false,
+          "mechanics": null
+        },
+        {
+          "check": "sep1-domain",
+          "severity": "clear",
+          "escalation": false,
+          "undetermined": false,
+          "mechanics": [
+            "domain_unverified"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source": "horizon",
+          "url": "https://horizon.stellar.org/assets?asset_code=BERKSHIRE\u0026asset_issuer=GA22QHSHQEHDJS2ZOINSC77XPPQ24G5EFRJGVEIZLKC5FAW3PQ5XNSDQ",
+          "claim": "issuer flags: auth_required=false auth_revocable=true auth_immutable=false auth_clawback_enabled=true"
+        },
+        {
+          "source": "stellar.toml",
+          "url": "https://nasdaq.finance/.well-known/stellar.toml",
+          "claim": "not retrievable: status 000"
+        },
+        {
+          "source": "stellar.expert/directory",
+          "url": "https://api.stellar.expert/explorer/directory/GA22QHSHQEHDJS2ZOINSC77XPPQ24G5EFRJGVEIZLKC5FAW3PQ5XNSDQ",
+          "claim": "listed as \"Scam Asset\" (domain \"nasdaq.finance\", tags: malicious, unsafe)"
+        },
+        {
+          "source": "stellar.expert/blocked-domains",
+          "url": "https://api.stellar.expert/explorer/directory/blocked-domains/nasdaq.finance",
+          "claim": "domain \"nasdaq.finance\" blocked=false"
+        }
+      ]
+    },
+    {
+      "dir": "doge-noflags-scam",
+      "asset": "DOGE-GA22IDJNHUMC3XKUCCBFNTQIJOUBWINC5GCXHLJ2V6KZ3OWAXCULNQ7P",
+      "severity": "critical",
+      "base_severity": "clear",
+      "escalated": true,
+      "undetermined": false,
+      "mechanics": [
+        "domain_unverified",
+        "blocklisted"
+      ],
+      "accountability": "unverified",
+      "checks": [
+        "capability",
+        "mutability",
+        "reputation",
+        "sep1-domain"
+      ],
+      "findings": [
+        {
+          "check": "reputation",
+          "severity": "critical",
+          "escalation": true,
+          "undetermined": false,
+          "mechanics": [
+            "blocklisted"
+          ]
+        },
+        {
+          "check": "capability",
+          "severity": "clear",
+          "escalation": false,
+          "undetermined": false,
+          "mechanics": null
+        },
+        {
+          "check": "mutability",
+          "severity": "clear",
+          "escalation": false,
+          "undetermined": false,
+          "mechanics": null
+        },
+        {
+          "check": "sep1-domain",
+          "severity": "clear",
+          "escalation": false,
+          "undetermined": false,
+          "mechanics": [
+            "domain_unverified"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "source": "horizon",
+          "url": "https://horizon.stellar.org/assets?asset_code=DOGE\u0026asset_issuer=GA22IDJNHUMC3XKUCCBFNTQIJOUBWINC5GCXHLJ2V6KZ3OWAXCULNQ7P",
+          "claim": "issuer flags: auth_required=false auth_revocable=false auth_immutable=false auth_clawback_enabled=false"
+        },
+        {
+          "source": "stellar.toml",
+          "url": "https://darkpool.digital/.well-known/stellar.toml",
+          "claim": "not retrievable: status 000"
+        },
+        {
+          "source": "stellar.expert/directory",
+          "url": "https://api.stellar.expert/explorer/directory/GA22IDJNHUMC3XKUCCBFNTQIJOUBWINC5GCXHLJ2V6KZ3OWAXCULNQ7P",
+          "claim": "listed as \"Scam\" (domain \"darkpool.digital\", tags: malicious, unsafe)"
+        },
+        {
+          "source": "stellar.expert/blocked-domains",
+          "url": "https://api.stellar.expert/explorer/directory/blocked-domains/darkpool.digital",
+          "claim": "domain \"darkpool.digital\" blocked=false"
+        }
+      ]
+    },
+    {
+      "dir": "velo-no-home-domain",
+      "asset": "VELO-GDM4RQUQQUVSKQA7S6EM7XBZP3FCGH4Q7CL6TABQ7B2BEJ5ERARM2M5M",
+      "severity": "clear",
+      "base_severity": "clear",
+      "escalated": false,
+      "undetermined": false,
+      "mechanics": [
+        "domain_unverified"
+      ],
+      "accountability": "unknown",
+      "checks": [
+        "capability",
+        "mutability",
+        "reputation",
+        "sep1-domain"
+      ],
+      "findings": [
+        {
+          "check": "capability",
+          "severity": "clear",
+          "escalation": false,
+          "undetermined": false,
+          "mechanics": null
+        },
+        {
+          "check": "mutability",
+          "severity": "clear",
+          "escalation": false,
+          "undetermined": false,
+          "mechanics": null
+        },
+        {
+          "check": "sep1-domain",
+          "severity": "clear",
+          "escalation": false,
+          "undetermined": false,
+          "mechanics": [
+            "domain_unverified"
+          ]
+        },
+        {
+          "check": "reputation",
+          "severity": "clear",
+          "escalation": true,
+          "undetermined": false,
+          "mechanics": null
+        }
+      ],
+      "evidence": [
+        {
+          "source": "horizon",
+          "url": "https://horizon.stellar.org/assets?asset_code=VELO\u0026asset_issuer=GDM4RQUQQUVSKQA7S6EM7XBZP3FCGH4Q7CL6TABQ7B2BEJ5ERARM2M5M",
+          "claim": "issuer flags: auth_required=false auth_revocable=false auth_immutable=false auth_clawback_enabled=false"
+        },
+        {
+          "source": "stellar.expert/directory",
+          "url": "https://api.stellar.expert/explorer/directory/GDM4RQUQQUVSKQA7S6EM7XBZP3FCGH4Q7CL6TABQ7B2BEJ5ERARM2M5M",
+          "claim": "listed as \"Velo\" (domain \"velo.org\", tags: issuer)"
+        }
+      ]
+    }
+  ]
+}

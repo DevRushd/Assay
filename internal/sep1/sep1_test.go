@@ -48,10 +48,10 @@ issuer = "GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP2"
 	}
 }
 
-// SEP-0001 permits a currency entry whose only field is a link to a separate
-// per-currency TOML. Those entries carry no code or issuer, so they can never
-// match, and counting them is what lets the domain check say "unconfirmed"
-// instead of wrongly saying "refuted".
+// SEP-0001 permits a currency entry that links to a separate per-currency
+// TOML. Counting those entries is what lets the domain check say
+// "unconfirmed" instead of wrongly saying "refuted", because a link Assay did
+// not follow may name the asset in a document it never read.
 func TestLinkedCurrencies(t *testing.T) {
 	doc, err := sep1.Parse([]byte(`
 [[CURRENCIES]]
@@ -68,8 +68,10 @@ issuer = "` + issuer + `"
 		t.Fatalf("parse: %v", err)
 	}
 
-	if got := doc.LinkedCurrencies(); got != 2 {
-		t.Errorf("LinkedCurrencies() = %d, want 2", got)
+	// Two link-only entries neither of which is this asset: both are
+	// unresolved, so both count.
+	if got := doc.LinkedCurrencies("AQUA", issuer); got != 2 {
+		t.Errorf("LinkedCurrencies(AQUA) = %d, want 2", got)
 	}
 	if doc.Claims("USDC", issuer) {
 		t.Error("a linked entry must not be treated as an inline claim")
@@ -79,8 +81,82 @@ issuer = "` + issuer + `"
 	}
 
 	var nilDoc *sep1.Doc
-	if got := nilDoc.LinkedCurrencies(); got != 0 {
+	if got := nilDoc.LinkedCurrencies("AQUA", issuer); got != 0 {
 		t.Errorf("nil doc LinkedCurrencies() = %d, want 0", got)
+	}
+}
+
+// TestLinkedCurrenciesCountsLinkedEntryWithACode covers the shape the old
+// count missed. SEP-0001 does not require a linked entry to be link-only: an
+// entry may carry a toml link alongside a code and issuer. The distinction
+// that matters is not the shape of the entry but whether it already claims the
+// asset inline — an entry that does not is a lost claim the hedge must cover,
+// and one that does is the claim itself.
+func TestLinkedCurrenciesCountsLinkedEntryWithACode(t *testing.T) {
+	const other = "GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP2"
+
+	cases := []struct {
+		name       string
+		toml       string
+		wantLinked int
+		wantClaims bool
+	}{
+		{
+			name: "link with a code that does not match",
+			toml: `
+[[CURRENCIES]]
+toml = "https://example.com/.well-known/EURC.toml"
+code = "EURC"
+issuer = "` + other + `"
+`,
+			wantLinked: 1,
+			wantClaims: false,
+		},
+		{
+			name: "link with a code that matches",
+			toml: `
+[[CURRENCIES]]
+toml = "https://example.com/.well-known/USDC.toml"
+code = "USDC"
+issuer = "` + issuer + `"
+`,
+			wantLinked: 0,
+			wantClaims: true,
+		},
+		{
+			name: "matching link beside a non-matching one",
+			toml: `
+[[CURRENCIES]]
+toml = "https://example.com/.well-known/USDC.toml"
+code = "USDC"
+issuer = "` + issuer + `"
+
+[[CURRENCIES]]
+toml = "https://example.com/.well-known/EURC.toml"
+code = "EURC"
+issuer = "` + other + `"
+
+[[CURRENCIES]]
+toml = "https://example.com/.well-known/XLM.toml"
+`,
+			wantLinked: 2,
+			wantClaims: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc, err := sep1.Parse([]byte(tc.toml))
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			if got := doc.LinkedCurrencies("USDC", issuer); got != tc.wantLinked {
+				t.Errorf("LinkedCurrencies(USDC, issuer) = %d, want %d", got, tc.wantLinked)
+			}
+			if got := doc.Claims("USDC", issuer); got != tc.wantClaims {
+				t.Errorf("Claims(USDC, issuer) = %v, want %v", got, tc.wantClaims)
+			}
+		})
 	}
 }
 

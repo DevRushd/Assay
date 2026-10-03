@@ -1,0 +1,56 @@
+openapi: 3.0.3
+info:
+  title: Assay API
+  version: 1.0.0
+  description: Stellar asset trap scanner API contract.
+paths:
+  /api/v1/scan:
+    get:
+      summary: Scan an asset
+      parameters:
+        - name: asset
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Asset code and issuer (e.g. USDC-GA5Z...)
+        - name: holder
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional holder address to check trustline / balance state
+      responses:
+        '200':
+          description: Successful scan report. May indicate degraded state via header.
+          headers:
+            X-Assay-Undetermined:
+              schema:
+                type: string
+                enum: ["true"]
+              description: Present and set to "true" if the scan was degraded by a source outage.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  severity:
+                    type: string
+                  accountability:
+                    type: string
+                  undetermined:
+                    type: boolean
+                  undetermined_checks:
+                    type: array
+                    items:
+                      type: string
+                  findings:
+                    type: array
+                    items:
+                      type: object
+        '400':
+          description: Invalid request parameters.
+        '404':
+          description: Asset not found on the ledger.
+        '502':
+          description: Upstream scan failure.

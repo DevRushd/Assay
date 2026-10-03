@@ -34,7 +34,9 @@ func tlSubject(holder string, tl *horizon.TrustlineBalance, tlErr string) *mecha
 		Holder:             holder,
 		HolderTrustline:    tl,
 		HolderTrustlineErr: tlErr,
-		FetchedAt:          time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC),
+		HolderAttemptedAt:  time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC),
+		HolderFetchedAt:    time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC),
+		ScannedAt:          time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC),
 	}
 }
 

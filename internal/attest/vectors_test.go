@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/use-assay/assay/internal/attest"
+	"github.com/use-assay/assay/internal/horizon"
 	"github.com/use-assay/assay/internal/mechanics"
 )
 
@@ -23,7 +24,7 @@ import (
 // who re-scans.
 //
 // aqua-mainnet-onchain is the traceability vector: its digest equals the
-// evidence_hash of AQUA's live mainnet attestation
+// evidence_hash of AQUA's testnet attestation for the mainnet asset
 // (tx 1b6bafc1226570b2415299f5531256716f4d8dc489a9784fcd6ea347d0f63f5f,
 // 688453bd22e9b694b9c70659d37526bdae18944645542642008e9d961461a4a9 — see
 // docs/attestation-run.md), so a third-party reimplementation can check itself
@@ -97,6 +98,36 @@ var vectorReports = map[string]func() *mechanics.Report{
 			}
 		})
 	},
+	// network-bound-pubnet and network-bound-testnet are the v3 pair: two
+	// reports byte-identical except for the network line. Every earlier field,
+	// the check set, and the evidence are the same, so the two digests differ
+	// only through the ledger the facts were read from — which is exactly what
+	// #41 requires an attestation to be able to prove. The evidence URL cites
+	// the pubnet Horizon because the AQUA record these claims mirror was
+	// captured there; the testnet vector deliberately keeps it, since a
+	// verifiable URL is not itself a network claim and the hash must move on
+	// the network line alone.
+	"network-bound-pubnet": func() *mechanics.Report {
+		r := report(func(r *mechanics.Report) {
+			r.Mechanics = 0
+			r.CheckSet = []string{"capability", "mutability", "reputation", "sep1-domain"}
+			r.Network = horizon.PublicNet
+			r.Evidence = []mechanics.Evidence{
+				ev("horizon", vecHorizonURL, vecNoFlags),
+			}
+		})
+		return r
+	},
+	"network-bound-testnet": func() *mechanics.Report {
+		return report(func(r *mechanics.Report) {
+			r.Mechanics = 0
+			r.CheckSet = []string{"capability", "mutability", "reputation", "sep1-domain"}
+			r.Network = horizon.TestNet
+			r.Evidence = []mechanics.Evidence{
+				ev("horizon", vecHorizonURL, vecNoFlags),
+			}
+		})
+	},
 	"escalated-true-critical": func() *mechanics.Report {
 		return report(func(r *mechanics.Report) {
 			r.Asset = mechanics.Asset{
@@ -134,8 +165,8 @@ var vectorReports = map[string]func() *mechanics.Report{
 			}
 		})
 	},
-	// Traceable to the live mainnet attestation named above: the digest file
-	// equals the evidence_hash recorded on chain and in docs/attestation-run.md.
+	// Traceable to the testnet attestation for the mainnet asset named above:
+	// the digest file equals the evidence_hash recorded in docs/attestation-run.md.
 	"aqua-mainnet-onchain": func() *mechanics.Report {
 		return report(func(r *mechanics.Report) {
 			r.Evidence = []mechanics.Evidence{

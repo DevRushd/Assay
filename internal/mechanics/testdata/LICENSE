@@ -1,0 +1,18 @@
+Creative Commons Attribution 4.0 International (CC BY 4.0)
+
+Copyright (c) 2026 Assay contributors
+
+This license applies only to the evidence dataset manifest, fixture annotations,
+and other dataset-specific metadata in this directory. It does not apply to
+Assay source code, which remains licensed under Apache-2.0, or to third-party
+source payloads. Horizon, StellarExpert, and issuer-domain material remains
+subject to the terms and licenses of its respective provider.
+
+You are free to share and adapt the covered dataset metadata for any purpose,
+provided that you give appropriate credit to Assay, link to
+https://creativecommons.org/licenses/by/4.0/, and indicate if changes were
+made. No additional restrictions may be applied to the covered metadata.
+
+The license text is summarized here for repository clarity. The authoritative
+license is the CC BY 4.0 legal code at:
+https://creativecommons.org/licenses/by/4.0/legalcode

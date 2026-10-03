@@ -62,10 +62,12 @@ func (c TrustlineCheck) Run(_ context.Context, s *Subject) (Finding, error) {
 			s.Holder, s.HolderTrustlineErr,
 		)
 		f.Evidence = append(f.Evidence, Evidence{
-			Source:      "horizon",
-			URL:         holderURL,
-			Claim:       "not retrievable: " + s.HolderTrustlineErr,
-			RetrievedAt: s.FetchedAt,
+			Source: "horizon",
+			URL:    holderURL,
+			Claim:  "not retrievable: " + s.HolderTrustlineErr,
+			// Fetch failed: attempt time, marked as an attempt.
+			RetrievedAt: NewCanonicalTime(s.HolderAttemptedAt),
+			Attempted:   true,
 		})
 		return f, nil
 	}
@@ -96,7 +98,7 @@ func (c TrustlineCheck) Run(_ context.Context, s *Subject) (Finding, error) {
 			"trustline %s-%s: is_clawback_enabled=%t is_authorized=%t",
 			tl.AssetCode, tl.AssetIssuer, tl.IsClawbackEnabled, tl.IsAuthorized,
 		),
-		RetrievedAt: s.FetchedAt,
+		RetrievedAt: NewCanonicalTime(s.HolderFetchedAt),
 	})
 
 	switch {

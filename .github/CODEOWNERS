@@ -1,0 +1,23 @@
+# GitHub review routing only; scripts/merge-gate.sh is the enforcement mechanism.
+# Keep this path list in sync with CRITICAL_PATHS in scripts/merge-gate.sh.
+# scripts/check-codeowners.sh and CI detect drift between the two.
+/docs/severity-model.md @use-assay/maintainers
+/internal/mechanics/severity.go @use-assay/maintainers
+/internal/mechanics/mechanics.go @use-assay/maintainers
+/internal/mechanics/check_capability.go @use-assay/maintainers
+/internal/mechanics/check_reputation.go @use-assay/maintainers
+/internal/mechanics/check_domain.go @use-assay/maintainers
+/internal/mechanics/eval_test.go @use-assay/maintainers
+/internal/mechanics/testdata @use-assay/maintainers
+/internal/scan/scan.go @use-assay/maintainers
+/internal/stellarexpert/client.go @use-assay/maintainers
+/internal/horizon/client.go @use-assay/maintainers
+/internal/sep1/sep1.go @use-assay/maintainers
+/docs/contract-interface.md @use-assay/maintainers
+/internal/attest/attest.go @use-assay/maintainers
+/internal/mechanics/evidence.go @use-assay/maintainers
+/assay-contracts/contracts/safety-registry/src/lib.rs @use-assay/maintainers
+/assay-contracts/contracts/example-gate/src/lib.rs @use-assay/maintainers
+/scripts/merge-gate.sh @use-assay/maintainers
+/scripts/check-codeowners.sh @use-assay/maintainers
+/.github/workflows @use-assay/maintainers

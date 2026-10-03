@@ -255,18 +255,22 @@ measurable.
 
 ### `capability`
 
-- **Reads one source and does not corroborate it.** Severity comes from the
-  `flags` object on Horizon's `/assets` record. The scan also fetches the issuer
-  *account*, which carries its own copy of the same flags, and **never compares
-  them**. Those are different ingestion paths; if they disagree, Assay silently
-  uses one. A free consistency check is available and is not made.
+- **Reads two copies of the flags and used not to corroborate them.** Severity
+  comes from the `flags` object on Horizon's `/assets` record. The scan also
+  fetches the issuer *account*, which carries its own copy of the same flags.
+  The first run compared neither and silently used one. This is now fixed:
+  `check_capability.go` reconciles both ingestion paths and, on disagreement,
+  takes the more dangerous reading and cites both URLs
+  ([checks.md](checks.md#the-two-copies-of-the-flags)).
 - **Prospective only.** Clawback is inherited at trustline creation (CAP-0035),
   so a `high` verdict describes what happens to a trustline you open *now*, not
   a balance you already hold.
-- **`clear` doubles as "not evaluated".** There is no severity value meaning
-  unknown, so a report built from an empty subject would read `clear` — the
-  safest value in the ABI. Unreachable through the live scanner, which fails
-  hard when Horizon fails, but not prevented by construction.
+- **`clear` used to double as "not evaluated".** There was no severity value
+  meaning unknown, so a report built from an empty subject read `clear` — the
+  safest value in the ABI. This is now fixed by the `unevaluated` sentinel (5)
+  and `ErrUnevaluated`, which keep an unread flag out of the preimage and
+  off-chain ([#32](https://github.com/use-assay/Assay/issues/32),
+  [glossary](glossary.md#not-evaluated)).
 - **No false positives observed in this run.** Flags are consensus-enforced
   booleans; the check reports them without interpretation. Its risk is
   under-reporting, not over-reporting.
@@ -281,9 +285,9 @@ measurable.
   USDC is a 404, BERKSHIRE is a DNS failure.
 - **Linked currency files are not followed.** A `stellar.toml` may point to a
   per-currency file rather than inline the entry. Assay reports that as
-  unconfirmed rather than refuted — but the detection counts only entries with a
-  `toml` link and *no* code or issuer. An entry carrying both a link and a code
-  is missed, so the hedge is skipped in a case where it applies.
+  unconfirmed rather than refuted, counting every entry that carries a `toml`
+  link whether or not it also carries a code, and excluding only entries that
+  already declare the asset inline — a claim Assay did read needs no hedge.
 - **A verified domain is weak evidence.** It proves someone published a matching
   claim. Publishing a `stellar.toml` takes ten minutes.
 

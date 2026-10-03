@@ -1,6 +1,7 @@
 package attest_test
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -20,12 +21,12 @@ func report(mut func(*mechanics.Report)) *mechanics.Report {
 		Severity:       mechanics.Clear,
 		Base:           mechanics.Clear,
 		Accountability: mechanics.AccountabilityVerified,
-		ScannedAt:      time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC),
+		ScannedAt:      mechanics.NewCanonicalTime(time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC)),
 		Evidence: []mechanics.Evidence{{
 			Source:      "horizon",
 			URL:         "https://horizon.stellar.org/assets?asset_code=AQUA",
 			Claim:       "issuer flags: auth_required=false",
-			RetrievedAt: time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC),
+			RetrievedAt: mechanics.NewCanonicalTime(time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC)),
 		}},
 	}
 	if mut != nil {
@@ -90,6 +91,7 @@ func TestPreimageMatchesTheDocumentedEncoding(t *testing.T) {
 		"escalated\tfalse",
 		"mechanics\t0",
 		"accountability\tverified",
+		"checks\t",
 		// Evidence lines sorted bytewise: horizon before stellar.expert.
 		"evidence\thorizon\thttps://horizon.stellar.org/assets?asset_code=AQUA\t" + escaped,
 		"evidence\tstellar.expert/directory\thttps://api.stellar.expert/explorer/directory/" + rep.Asset.Issuer + "\t" + `listed as "AQUA Issuer" on aqua.network`,
@@ -134,8 +136,8 @@ func TestRetrievalTimeDoesNotChangeTheHash(t *testing.T) {
 		t.Fatalf("FromReport: %v", err)
 	}
 	later, err := attest.FromReport(report(func(r *mechanics.Report) {
-		r.ScannedAt = r.ScannedAt.Add(72 * time.Hour)
-		r.Evidence[0].RetrievedAt = r.Evidence[0].RetrievedAt.Add(72 * time.Hour)
+		r.ScannedAt = mechanics.NewCanonicalTime(r.ScannedAt.Time().Add(72 * time.Hour))
+		r.Evidence[0].RetrievedAt = mechanics.NewCanonicalTime(r.Evidence[0].RetrievedAt.Time().Add(72 * time.Hour))
 	}))
 	if err != nil {
 		t.Fatalf("FromReport: %v", err)
@@ -212,6 +214,65 @@ func TestEvidenceOrderDoesNotChangeTheHash(t *testing.T) {
 	}
 }
 
+func TestVerifyHashReportsMatchMismatchAndUnknown(t *testing.T) {
+	base, err := attest.FromReport(report(nil))
+	if err != nil {
+		t.Fatalf("FromReport: %v", err)
+	}
+	if got := attest.VerifyHash(report(nil), base.EvidenceHash); got.Status != attest.HashMatched {
+		t.Fatalf("VerifyHash: status = %q, want %q", got.Status, attest.HashMatched)
+	}
+
+	mutations := map[string]func(*mechanics.Report){
+		"severity":  func(r *mechanics.Report) { r.Severity, r.Base = mechanics.Medium, mechanics.Medium },
+		"escalated": func(r *mechanics.Report) { r.Severity, r.Escalated = mechanics.Critical, true },
+		"mechanics": func(r *mechanics.Report) {
+			r.Mechanics = mechanics.MechAuthRequired
+			r.Severity, r.Base = mechanics.Low, mechanics.Low
+		},
+		"accountability": func(r *mechanics.Report) { r.Accountability = mechanics.AccountabilityUnverified },
+		"claim":          func(r *mechanics.Report) { r.Evidence[0].Claim = "issuer flags: auth_required=true" },
+		"source":         func(r *mechanics.Report) { r.Evidence[0].Source = "elsewhere" },
+		"evidence line": func(r *mechanics.Report) {
+			r.Evidence = append(r.Evidence, mechanics.Evidence{Source: "stellar.expert", Claim: "listed"})
+		},
+	}
+	for name, mut := range mutations {
+		t.Run(name, func(t *testing.T) {
+			got := attest.VerifyHash(report(mut), base.EvidenceHash)
+			if got.Status != attest.HashMismatch {
+				t.Fatalf("VerifyHash: status = %q, want %q for %s", got.Status, attest.HashMismatch, name)
+			}
+		})
+	}
+
+	// Reordered evidence is canonicalised, so it must not be reported as a
+	// tampering event.
+	second := mechanics.Evidence{Source: "stellar.expert/directory", URL: "https://api.stellar.expert/x", Claim: "listed"}
+	forward, err := attest.FromReport(report(func(r *mechanics.Report) { r.Evidence = append(r.Evidence, second) }))
+	if err != nil {
+		t.Fatalf("FromReport: %v", err)
+	}
+	reversed, err := attest.FromReport(report(func(r *mechanics.Report) { r.Evidence = append([]mechanics.Evidence{second}, r.Evidence...) }))
+	if err != nil {
+		t.Fatalf("FromReport: %v", err)
+	}
+	if got := attest.VerifyHash(report(func(r *mechanics.Report) { r.Evidence = append(r.Evidence, second) }), forward.EvidenceHash); got.Status != attest.HashMatched {
+		t.Fatalf("VerifyHash: reordered evidence should still match: status = %q", got.Status)
+	}
+	if got := attest.VerifyHash(report(func(r *mechanics.Report) { r.Evidence = append([]mechanics.Evidence{second}, r.Evidence...) }), reversed.EvidenceHash); got.Status != attest.HashMatched {
+		t.Fatalf("VerifyHash: reordered evidence should still match: status = %q", got.Status)
+	}
+
+	undetermined := report(func(r *mechanics.Report) {
+		r.Undetermined = true
+		r.UndeterminedChecks = []string{"reputation"}
+	})
+	if got := attest.VerifyHash(undetermined, base.EvidenceHash); got.Status != attest.HashUnknown {
+		t.Fatalf("VerifyHash: undetermined report should be unknown, got %q", got.Status)
+	}
+}
+
 // A claim carries third-party text, so an issuer controls part of the preimage.
 // Without escaping, a crafted directory name could impersonate a separate
 // evidence line and forge the preimage of a report that was never produced.
@@ -225,10 +286,10 @@ func TestSeparatorsInClaimsCannotForgeALine(t *testing.T) {
 	if strings.Contains(crafted.Preimage, "\nevidence\thorizon\thttps://evil") {
 		t.Fatalf("a claim injected a forged evidence line:\n%s", crafted.Preimage)
 	}
-	// Version, six header fields, one evidence line: the crafted claim must not
+	// Version, seven header fields, one evidence line: the crafted claim must not
 	// have bought itself an extra record.
-	if lines := strings.Count(crafted.Preimage, "\n"); lines != 8 {
-		t.Fatalf("expected 8 preimage lines, got %d:\n%s", lines, crafted.Preimage)
+	if lines := strings.Count(crafted.Preimage, "\n"); lines != 9 {
+		t.Fatalf("expected 9 preimage lines, got %d:\n%s", lines, crafted.Preimage)
 	}
 }
 
@@ -305,5 +366,50 @@ func TestCapabilityClearWithReputationDownIsNotAttestable(t *testing.T) {
 		r.UndeterminedChecks = []string{"reputation"}
 	})); err == nil {
 		t.Fatal("a clear severity reached without reading reputation was attestable")
+	}
+}
+
+type stubCheck struct {
+	id string
+}
+
+func (s stubCheck) ID() string       { return s.id }
+func (s stubCheck) Describe() string { return s.id }
+func (s stubCheck) Run(ctx context.Context, sub *mechanics.Subject) (mechanics.Finding, error) {
+	return mechanics.Finding{Check: s.id}, nil
+}
+
+func TestCheckIdentityChangesTheHash(t *testing.T) {
+	ctx := context.Background()
+	sub := &mechanics.Subject{}
+
+	e2 := &mechanics.Engine{Checks: []mechanics.Check{stubCheck{"a"}, stubCheck{"b"}}}
+	rep2, _ := e2.Run(ctx, sub)
+	// mock unevaluated/undetermined errors by making them valid
+	rep2.Severity = mechanics.Clear
+	rep2.Base = mechanics.Clear
+	rep2.Mechanics = mechanics.MechAuthRequired
+	params2, _ := attest.FromReport(rep2)
+
+	e3 := &mechanics.Engine{Checks: []mechanics.Check{stubCheck{"a"}, stubCheck{"b"}, stubCheck{"c"}}}
+	rep3, _ := e3.Run(ctx, sub)
+	rep3.Severity = mechanics.Clear
+	rep3.Base = mechanics.Clear
+	rep3.Mechanics = mechanics.MechAuthRequired
+	params3, _ := attest.FromReport(rep3)
+
+	if params2.EvidenceHash == params3.EvidenceHash {
+		t.Errorf("a two-check engine and a three-check engine produced the same hash: %s", params2.EvidenceHash)
+	}
+
+	e2Reordered := &mechanics.Engine{Checks: []mechanics.Check{stubCheck{"b"}, stubCheck{"a"}}}
+	rep2Reordered, _ := e2Reordered.Run(ctx, sub)
+	rep2Reordered.Severity = mechanics.Clear
+	rep2Reordered.Base = mechanics.Clear
+	rep2Reordered.Mechanics = mechanics.MechAuthRequired
+	params2Reordered, _ := attest.FromReport(rep2Reordered)
+
+	if params2.EvidenceHash != params2Reordered.EvidenceHash {
+		t.Errorf("check order affected the hash:\na, b: %s\nb, a: %s", params2.EvidenceHash, params2Reordered.EvidenceHash)
 	}
 }

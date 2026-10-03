@@ -1,0 +1,90 @@
+name: Scanner bug report
+description: A scan's output does not match what the ledger shows.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        **First: is this a security issue?** If the output is wrong in the
+        *dangerous direction* — a scan reporting severity **lower** than the
+        issuer's flags justify, `is_safe` true for an unattested or stale
+        asset, a forged attestation accepted — that is under-reporting, and
+        [SECURITY.md](https://github.com/use-assay/Assay/blob/main/SECURITY.md)
+        routes it to a private channel, not a public issue. Use the
+        [security advisory form](https://github.com/use-assay/Assay/security/advisories/new).
+
+
+        This template is for wrong-in-the-*safe*-direction output: severity
+        inflation, a finding that should not exist, a mechanic bit mislabeled,
+        or a failed source rendered as checked.
+
+
+        A scanner bug report is only actionable with three things, and all
+        three are required below: **the asset identifier**, **what Assay
+        actually said**, and **what the ledger actually shows**. Paraphrase is
+        where bugs go missing — paste the real output. Blank issues are
+        disabled on purpose: a report missing one of the three is the
+        round-trip this form exists to prevent.
+  - type: input
+    id: asset
+    attributes:
+      label: Asset identifier
+      description: The exact asset scanned, as CODE-ISSUER. A reproducible report needs the same subject the scan saw.
+      placeholder: USDZ-GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed output — what Assay said
+      description: >-
+        Paste the scan output verbatim: severity, `base_severity`, the
+        findings, the reasoning text, the mechanic bitset. From the API, the
+        CLI, or the attestation — whichever you ran. No paraphrase, no summary.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead (or why you are unsure)
+      description: >-
+        If you are not sure the behaviour is wrong, say so here rather than
+        stopping — an evidence-backed "this looks wrong to me" is more useful
+        than a confident guess. Note that "Assay should have flagged this as a
+        scam" is usually *not* a bug: severity is capability-only and
+        reputation is the only escalation axis
+        ([docs/severity-model.md](https://github.com/use-assay/Assay/blob/main/docs/severity-model.md)).
+        A ledger contradiction is a bug; a disagreement with reputation is not.
+    validations:
+      required: false
+  - type: textarea
+    id: evidence
+    attributes:
+      label: What the ledger shows
+      description: >-
+        The evidence contradicting the output, from the sources Assay itself
+        reads: the Horizon `/assets` record with the issuer's authorization
+        flags, the `/accounts` record, the stellar.toml, the StellarExpert
+        directory entry. Include the URLs and the date you retrieved each one —
+        issuer flags can change after a scan, and reports are point-in-time.
+        The strongest evidence is the raw record, pasted, not described.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: "`assay version`, the commit you built, or the URL of the API response."
+    validations:
+      required: false
+  - type: checkboxes
+    id: verbatim
+    attributes:
+      label: Checklist
+      options:
+        - label: Outputs are pasted verbatim, not retyped from memory.
+          required: true
+        - label: >-
+            This report does not claim Assay under-reports risk. If it did, I
+            stopped and used the private channel instead.
+          required: true

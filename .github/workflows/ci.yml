@@ -13,13 +13,13 @@ jobs:
     name: Go
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
 
       # Pinned to the module's own version rather than `stable`. When
       # `stable` moved to Go 1.27, golangci-lint v2.12.2 (built with 1.26)
       # panicked type-checking the newer standard library, and this check
       # failed on every push for reasons unrelated to the code under test.
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
           cache: true
@@ -39,27 +39,110 @@ jobs:
       - name: build
         run: go build ./...
 
+      - name: test merge gate
+        run: make test-gate
+
       # Tests must pass without network access: every check is a pure function
       # over fixtures captured under internal/*/testdata.
+      #
+      # The same run records coverage, so the numbers cost no second test pass.
+      # The default bash shell runs with pipefail, so tee does not hide a
+      # failing test.
       - name: test
-        run: go test -race ./...
+        run: go test -race -covermode=atomic -coverprofile=coverage.out ./... 2>&1 | tee go-test.log
+
+      # Per-package coverage, in the log and in the job summary. It reports and
+      # does not gate: there is no threshold (#130). It also sends nothing to a
+      # third-party service. The report is computed here from `go test` output,
+      # and the profile is kept as a GitHub artifact. Runs after a test failure
+      # too, since partial numbers are still information.
+      - name: coverage report
+        if: ${{ !cancelled() }}
+        run: |
+          report=$(./scripts/coverage-report.sh go-test.log coverage.out)
+          printf '%s\n' "$report"
+          {
+            echo "### Go coverage"
+            echo
+            printf '%s\n' "$report"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: upload coverage profile
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-profile
+          path: coverage.out
+          retention-days: 14
+          if-no-files-found: warn
+
+  # evidence_hash is the project's reproducibility claim: anyone re-scanning an
+  # attested asset must derive byte-identical preimage bytes, whatever Go they
+  # run. CI's main job tests one pinned version (go.mod); contributors run
+  # others. Map iteration order, strconv formatting and string sorting are
+  # where a toolchain difference would surface, so the attest package — the
+  # golden byte comparison and its vectors — runs on one older and one newer
+  # Go version than the pin. A version that changes the bytes fails here
+  # instead of shipping as an unexplained hash mismatch.
+  #
+  # Deliberately narrow, so it does not meaningfully slow CI: this package
+  # only, no race detector, no coverage, no matrix for the rest of the module.
+  # Explicit versions rather than `stable`: setup-go resolves `stable` to a
+  # moving target, which is the same trap the main job's go-version-file pin
+  # avoids for golangci-lint.
+  attest-reproducibility:
+    name: attest on Go ${{ matrix.go-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ["1.22.x", "1.27.x"]
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: true
+
+      # Pure functions over committed fixtures under internal/attest/testdata:
+      # no network access needed.
+      - name: go test ./internal/attest/
+        run: go test ./internal/attest/
+
+      # Mutation testing is deliberately NOT in CI. The decision is recorded in
+      # CONTRIBUTING.md ("Mutation testing: decision recorded", issue #110):
+      # the manual catalogue in docs/mutation-catalogue.md is the standing
+      # practice, run when safety-critical branches change. CI integration was
+      # evaluated and declined: mutation runners recompile per mutant, and even
+      # a 14-mutation run would add minutes of noisy, advisory-only cost to
+      # every PR. This comment exists so the absence is a recorded decision
+      # rather than an oversight.
 
   lint:
     name: golangci-lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       # Pinned to the module's own version rather than `stable`. When
       # `stable` moved to Go 1.27, golangci-lint v2.12.2 (built with 1.26)
       # panicked type-checking the newer standard library, and this check
       # failed on every push for reasons unrelated to the code under test.
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
           cache: true
       - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
+
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: lint shell scripts
+        run: find . -type f \( -name '*.sh' -o -name '*.bash' \) -not -path './.git/*' -print0 | xargs -0 shellcheck -S warning
 
   contract:
     name: Soroban contract
@@ -68,19 +151,44 @@ jobs:
       run:
         working-directory: assay-contracts
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
 
-      - name: rust toolchain
-        run: rustup component add rustfmt clippy
+      # The toolchain is pinned in assay-contracts/rust-toolchain.toml, which is
+      # this job's default working directory. `rustup toolchain install` reads
+      # that file and installs the exact channel plus the rustfmt/clippy
+      # components and the wasm32v1-none target it declares. Installing
+      # components ad hoc here would let CI and the pin drift apart, and a new
+      # Rust release adding a lint should not be able to turn main red.
+      - name: rust toolchain (pinned)
+        run: rustup toolchain install
 
       - name: cargo fmt
         run: cargo fmt --all -- --check
 
+      # Cargo.lock is committed but is only enforced if cargo is told to
+      # respect it. Without --locked, cargo silently re-resolves to whatever
+      # versions the index currently serves, so CI would stop testing the
+      # dependency set the repository claims -- and for a project whose stated
+      # invariant is no new dependency without a decision, that is the wrong
+      # thing to be testing. A stale or missing lockfile entry now fails the
+      # build instead of resolving quietly. cargo fmt is left alone: it does
+      # not resolve dependencies and does not accept --locked.
+      #
+      # These flags live only in CI, not in the Makefile, so a contributor who
+      # changes a manifest and has not refreshed the lockfile yet can still
+      # build and test locally.
       - name: cargo clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --all-targets --locked -- -D warnings
 
       - name: cargo test
-        run: cargo test
+        run: cargo test --locked
+
+      - name: check contract test snapshots
+        run: |
+          if ! git diff --exit-code -- contracts/example-gate/test_snapshots contracts/safety-registry/test_snapshots; then
+            echo "::error::Contract tests modified committed snapshots. Review the changed files and commit intentional snapshot updates."
+            exit 1
+          fi
 
   # Merge gate: catches PRs that touch maintainer-owned safety-critical paths
   # without manual review. A PR touching only docs or tests merges cleanly;
@@ -96,9 +204,12 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
+
+      - name: verify CODEOWNERS paths
+        run: ./scripts/check-codeowners.sh
 
       - name: check maintainer-owned paths
         run: |

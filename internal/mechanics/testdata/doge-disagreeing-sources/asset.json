@@ -1,0 +1,33 @@
+{
+  "_links": {
+    "toml": {
+      "href": "https://darkpool.digital/.well-known/stellar.toml"
+    }
+  },
+  "asset_type": "credit_alphanum4",
+  "asset_code": "DOGE",
+  "asset_issuer": "GA22IDJNHUMC3XKUCCBFNTQIJOUBWINC5GCXHLJ2V6KZ3OWAXCULNQ7P",
+  "paging_token": "DOGE_GA22IDJNHUMC3XKUCCBFNTQIJOUBWINC5GCXHLJ2V6KZ3OWAXCULNQ7P_credit_alphanum4",
+  "num_claimable_balances": 0,
+  "num_liquidity_pools": 0,
+  "num_contracts": 0,
+  "accounts": {
+    "authorized": 19,
+    "authorized_to_maintain_liabilities": 0,
+    "unauthorized": 0
+  },
+  "claimable_balances_amount": "0.0000000",
+  "liquidity_pools_amount": "0.0000000",
+  "contracts_amount": "0.0000000",
+  "balances": {
+    "authorized": "50000000.0000000",
+    "authorized_to_maintain_liabilities": "0.0000000",
+    "unauthorized": "0.0000000"
+  },
+  "flags": {
+    "auth_required": false,
+    "auth_revocable": false,
+    "auth_immutable": false,
+    "auth_clawback_enabled": false
+  }
+}

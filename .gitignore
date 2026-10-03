@@ -6,6 +6,8 @@
 /dist/
 coverage.out
 coverage.html
+coverage.log
+go-test.log
 
 # Rust
 /assay-contracts/target/
