@@ -2,7 +2,6 @@ package mechanics
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/use-assay/assay/internal/sep1"
@@ -71,13 +70,13 @@ func (c DomainCheck) Run(_ context.Context, s *Subject) (Finding, error) {
 			Source:      "horizon",
 			URL:         horizonAccountURL(s.Asset.Issuer),
 			Claim:       fmt.Sprintf("home_domain %q", domain),
-			RetrievedAt: s.IssuerFetchedAt,
+			RetrievedAt: NewCanonicalTime(s.IssuerFetchedAt),
 		})
 		f.Evidence = append(f.Evidence, Evidence{
 			Source:      "stellar.expert/directory",
 			URL:         s.DirectoryURL,
 			Claim:       fmt.Sprintf("listed under domain %q", s.Directory.Domain),
-			RetrievedAt: s.DirectoryFetchedAt,
+			RetrievedAt: NewCanonicalTime(s.DirectoryFetchedAt),
 		})
 		return f, nil
 	}
@@ -103,7 +102,7 @@ func (c DomainCheck) Run(_ context.Context, s *Subject) (Finding, error) {
 				Source:      "stellar.toml",
 				URL:         s.TomlURL,
 				Claim:       "refused: " + s.TomlErr,
-				RetrievedAt: s.TomlAttemptedAt,
+				RetrievedAt: NewCanonicalTime(s.TomlAttemptedAt),
 				Attempted:   true,
 				Refused:     true,
 			})
@@ -132,6 +131,9 @@ func (c DomainCheck) Run(_ context.Context, s *Subject) (Finding, error) {
 	if !s.Toml.Claims(s.Asset.Code, s.Asset.Issuer) {
 		acc = AccountabilityUnverified
 		f.Mechanics = MechDomainUnverified
+		if s.TomlLinked != nil {
+			return c.resolveLinked(f, s, domain, s.TomlLinked), nil
+		}
 
 		// SEP-0001 lets a currency entry delegate to its own TOML file, and
 		// does not require the link to be the entry's only field: an entry may
@@ -236,7 +238,7 @@ func (DomainCheck) resolveLinked(f Finding, s *Subject, domain string, res *sep1
 			Source:      "stellar.toml",
 			URL:         res.ClaimedURL,
 			Claim:       "linked document claims " + s.Asset.String(),
-			RetrievedAt: retrieved,
+			RetrievedAt: NewCanonicalTime(retrieved),
 		})
 		return f
 	}
@@ -265,7 +267,7 @@ func (DomainCheck) resolveLinked(f Finding, s *Subject, domain string, res *sep1
 			Claim: fmt.Sprintf(
 				"CURRENCIES lists %d entries, none matching %s inline; %d linked documents left unread (bound: %d)",
 				len(s.Toml.Currencies), s.Asset, res.Deferred, sep1.MaxLinkedDocuments),
-			RetrievedAt: s.Toml.FetchedAt,
+			RetrievedAt: NewCanonicalTime(s.Toml.FetchedAt),
 		})
 		return f
 	}
@@ -297,7 +299,7 @@ func (DomainCheck) resolveLinked(f Finding, s *Subject, domain string, res *sep1
 			Claim: fmt.Sprintf(
 				"CURRENCIES lists %d entries, none matching %s inline; %d of %d linked documents could not be read",
 				len(s.Toml.Currencies), s.Asset, unread, res.Attempted),
-			RetrievedAt: s.Toml.FetchedAt,
+			RetrievedAt: NewCanonicalTime(s.Toml.FetchedAt),
 		})
 		return f
 	}
@@ -318,7 +320,7 @@ func (DomainCheck) resolveLinked(f Finding, s *Subject, domain string, res *sep1
 		Claim: fmt.Sprintf(
 			"CURRENCIES lists %d entries and %d linked documents, none matching %s",
 			len(s.Toml.Currencies), res.Attempted, s.Asset),
-		RetrievedAt: s.Toml.FetchedAt,
+		RetrievedAt: NewCanonicalTime(s.Toml.FetchedAt),
 	})
 	return f
 }

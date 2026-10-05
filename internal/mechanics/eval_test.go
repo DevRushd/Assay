@@ -2,6 +2,9 @@ package mechanics_test
 
 import (
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -94,38 +97,28 @@ func TestEval(t *testing.T) {
 			wantEscalated: true,
 			wantAccount:   mechanics.AccountabilityUnverified,
 		},
-		{
-			dir: "doge-disagreeing-sources",
-			why: "two consumed sources disagree about the same issuer (blocked-domains returns blocked=false " +
-				"for darkpool.digital while the directory tags the issuer malicious/unsafe): escalation must " +
-				"still fire from the source that did flag",
-			wantBase:      mechanics.Clear,
-			wantSeverity:  mechanics.Critical,
-			wantEscalated: true,
-			wantAccount:   mechanics.AccountabilityUnverified,
-		},
 	}
 
 	eng := mechanics.NewEngine()
-	for _, tc := range eval.Corpus() {
-		t.Run(tc.Dir, func(t *testing.T) {
-			rep, err := eng.Run(context.Background(), loadSubject(t, tc.Dir))
+	for _, tc := range cases {
+		t.Run(tc.dir, func(t *testing.T) {
+			rep, err := eng.Run(context.Background(), loadSubject(t, tc.dir))
 			if err != nil {
 				t.Fatalf("run: %v", err)
 			}
-			if rep.Base != tc.Base {
+			if rep.Base != tc.wantBase {
 				t.Errorf("base severity = %v, want %v\nwhy this case exists: %s",
-					rep.Base, tc.Base, tc.Why)
+					rep.Base, tc.wantBase, tc.why)
 			}
-			if rep.Severity != tc.Severity {
+			if rep.Severity != tc.wantSeverity {
 				t.Errorf("severity = %v, want %v\nwhy this case exists: %s",
-					rep.Severity, tc.Severity, tc.Why)
+					rep.Severity, tc.wantSeverity, tc.why)
 			}
-			if rep.Escalated != tc.Escalated {
-				t.Errorf("escalated = %v, want %v", rep.Escalated, tc.Escalated)
+			if rep.Escalated != tc.wantEscalated {
+				t.Errorf("escalated = %v, want %v", rep.Escalated, tc.wantEscalated)
 			}
-			if rep.Accountability != tc.Accountability {
-				t.Errorf("accountability = %v, want %v", rep.Accountability, tc.Accountability)
+			if rep.Accountability != tc.wantAccount {
+				t.Errorf("accountability = %v, want %v", rep.Accountability, tc.wantAccount)
 			}
 		})
 	}

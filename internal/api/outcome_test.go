@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -10,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/use-assay/assay/internal/api"
+	"github.com/use-assay/assay/internal/mechanics"
+	"github.com/use-assay/assay/internal/scan"
 )
 
 // A valid mainnet asset: USDC. Its issuer has no home_domain dependency in
@@ -78,14 +81,15 @@ func newLogServer(t *testing.T) *logServer {
 	horizon := &horizonStub{}
 	hSrv := httptest.NewServer(horizon)
 	t.Cleanup(hSrv.Close)
-	srv.Scanner.Horizon.BaseURL = hSrv.URL
+	productionScanner := srv.Scanner.(*scan.Scanner)
+	productionScanner.Horizon.BaseURL = hSrv.URL
 
 	// expertStub answers every StellarExpert endpoint with a well-formed
 	// "nothing listed" answer.
 	expert := &expertStub{}
 	eSrv := httptest.NewServer(expert)
 	t.Cleanup(eSrv.Close)
-	srv.Scanner.Expert.BaseURL = eSrv.URL
+	productionScanner.Expert.BaseURL = eSrv.URL
 
 	return &logServer{
 		srv:     srv,
@@ -183,6 +187,9 @@ func decodeOutcome(t *testing.T, m map[string]any) (class, requestID, asset stri
 // the request identifier and the asset.
 func TestLogCompleteOutcome(t *testing.T) {
 	ls := newLogServer(t)
+	ls.srv.Scanner = scannerFunc(func(context.Context, mechanics.Asset, string) (*mechanics.Report, error) {
+		return &mechanics.Report{}, nil
+	})
 
 	rec := doScan(ls.handler, logTestAsset, nil)
 	if rec.Code != http.StatusOK {
@@ -324,8 +331,13 @@ func TestLogRequestIDPropagates(t *testing.T) {
 // class has a counter and the /metrics endpoint reports it.
 func TestLogCountersExposeOutcomeClasses(t *testing.T) {
 	ls := newLogServer(t)
+	productionScanner := ls.srv.Scanner
+	ls.srv.Scanner = scannerFunc(func(context.Context, mechanics.Asset, string) (*mechanics.Report, error) {
+		return &mechanics.Report{}, nil
+	})
 
-	doScan(ls.handler, logTestAsset, nil)                                                    // complete
+	doScan(ls.handler, logTestAsset, nil) // complete
+	ls.srv.Scanner = productionScanner
 	doScan(ls.handler, "NOPE-GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN", nil) // not_found
 	ls.horizon.setFail(true)
 	doScan(ls.handler, logTestAsset, nil) // upstream_failure
@@ -350,6 +362,12 @@ func TestLogCountersExposeOutcomeClasses(t *testing.T) {
 			t.Fatalf("scan_outcomes[%q] = %d, want 1; full body %v", class, body.ScanOutcomes[class], body.ScanOutcomes)
 		}
 	}
+}
+
+type scannerFunc func(context.Context, mechanics.Asset, string) (*mechanics.Report, error)
+
+func (f scannerFunc) ScanWithHolder(ctx context.Context, asset mechanics.Asset, holder string) (*mechanics.Report, error) {
+	return f(ctx, asset, holder)
 }
 
 // TestLogNeverSecrets pins the invalid-state rule: the log lines carry asset

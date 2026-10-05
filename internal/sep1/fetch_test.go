@@ -147,8 +147,8 @@ func TestFetchTransportFailureWrapsTheCause(t *testing.T) {
 	if !errors.Is(err, sentinel) {
 		t.Errorf("the underlying failure was not preserved: %v", err)
 	}
-	if !strings.Contains(err.Error(), "sep1: fetch") {
-		t.Errorf("transport failure is not labelled as a fetch failure: %v", err)
+	if !strings.Contains(err.Error(), sep1.FailureDNS) {
+		t.Errorf("transport failure is not labelled with its canonical DNS category: %v", err)
 	}
 }
 

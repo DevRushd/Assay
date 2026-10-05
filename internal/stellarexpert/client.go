@@ -91,6 +91,30 @@ const DefaultDirectoryTTL = AdvertisedMaxAge
 // a tighter blocklist window can set it lower, or to zero. See docs/caching.md.
 const DefaultBlocklistTTL = AdvertisedMaxAge
 
+// RetryOptions bounds retries for transient StellarExpert failures.
+type RetryOptions struct {
+	Attempts int
+	Backoff  func(attempt int, retryAfter time.Duration) time.Duration
+}
+
+// DefaultRetryOptions returns a bounded exponential backoff with jitter.
+func DefaultRetryOptions() RetryOptions {
+	return RetryOptions{
+		Attempts: 3,
+		Backoff: func(attempt int, retryAfter time.Duration) time.Duration {
+			delay := time.Duration(math.Pow(2, float64(attempt))) * 100 * time.Millisecond
+			if delay > 2*time.Second {
+				delay = 2 * time.Second
+			}
+			delay = delay/2 + time.Duration(rand.Int63n(int64(delay/2)+1))
+			if retryAfter > delay {
+				return retryAfter
+			}
+			return delay
+		},
+	}
+}
+
 // Options configures a Client, including its cache policy.
 type Options struct {
 	// DirectoryTTL is how long a directory answer may be served from cache,

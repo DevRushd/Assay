@@ -227,8 +227,9 @@ func bytesOr(b []byte) []byte {
 	return b
 }
 
-func runVerify(args []string) error {
+func runVerify(args []string, d commandDeps) error {
 	fs := flag.NewFlagSet("verify", flag.ContinueOnError)
+	assetLists := assetListFlags(fs)
 	maxAge := fs.Int64("max-age", 0, "treat an attestation older than this many seconds as stale (0 disables the age check)")
 	asJSON := fs.Bool("json", false, "print the verdict as JSON for scripting")
 	if err := fs.Parse(args); err != nil {
@@ -247,7 +248,7 @@ func runVerify(args []string) error {
 
 	res, verdict := verifyAsset(ctx, asset, *maxAge, time.Now(),
 		func(ctx context.Context, a mechanics.Asset) (*mechanics.Report, error) {
-			return scan.New().Scan(ctx, a)
+			return d.scan(ctx, a, assetLists())
 		},
 		stellarRegistryReader)
 	if verdict != nil {
@@ -255,25 +256,35 @@ func runVerify(args []string) error {
 	}
 
 	if *asJSON {
-		enc := json.NewEncoder(os.Stdout)
+		enc := json.NewEncoder(d.stdout)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(res); err != nil {
 			return err
 		}
 	} else {
-		fmt.Printf("%s: %s\n", strings.ToUpper(string(res.Outcome)), res.Asset)
+		if _, err := fmt.Fprintf(d.stdout, "%s: %s\n", strings.ToUpper(string(res.Outcome)), res.Asset); err != nil {
+			return err
+		}
 		if res.Detail != "" {
-			fmt.Println(res.Detail)
+			if _, err := fmt.Fprintln(d.stdout, res.Detail); err != nil {
+				return err
+			}
 		}
 		if len(res.Fields) > 0 {
-			fmt.Println("differing fields:", strings.Join(res.Fields, ", "))
+			if _, err := fmt.Fprintln(d.stdout, "differing fields:", strings.Join(res.Fields, ", ")); err != nil {
+				return err
+			}
 			if res.Local != nil {
-				fmt.Printf("local: severity=%d flags=%d evidence_hash=%s\n",
-					res.Local.Severity, res.Local.Flags, res.Local.EvidenceHash)
+				if _, err := fmt.Fprintf(d.stdout, "local: severity=%d flags=%d evidence_hash=%s\n",
+					res.Local.Severity, res.Local.Flags, res.Local.EvidenceHash); err != nil {
+					return err
+				}
 			}
 			if res.Chain != nil {
-				fmt.Printf("chain: severity=%d flags=%d evidence_hash=%s attested_at=%d\n",
-					res.Chain.Severity, res.Chain.Flags, res.Chain.EvidenceHash, res.Chain.AttestedAt)
+				if _, err := fmt.Fprintf(d.stdout, "chain: severity=%d flags=%d evidence_hash=%s attested_at=%d\n",
+					res.Chain.Severity, res.Chain.Flags, res.Chain.EvidenceHash, res.Chain.AttestedAt); err != nil {
+					return err
+				}
 			}
 		}
 	}

@@ -85,7 +85,7 @@ func NormalizeEvidenceHash(s string) (string, error) {
 			ErrMalformedHash, len(h), sha256.Size*2)
 	}
 	if _, err := hex.DecodeString(h); err != nil {
-		return "", fmt.Errorf("%w: %v", ErrMalformedHash, err)
+		return "", fmt.Errorf("%w: %w", ErrMalformedHash, err)
 	}
 	return h, nil
 }
@@ -110,7 +110,7 @@ func ParsePreimage(pre []byte) (PreimageInfo, error) {
 
 	info := PreimageInfo{Version: lines[0]}
 	switch info.Version {
-	case PreimageVersion, PreimageVersionCheckSet:
+	case PreimageVersion, PreimageVersionCheckSet, PreimageVersionNetwork:
 	default:
 		return PreimageInfo{}, fmt.Errorf("attest: unrecognised preimage version %q", info.Version)
 	}

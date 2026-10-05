@@ -4,15 +4,22 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"os"
-	"strings"
 	"path/filepath"
+	"strings"
 )
 
 func main() {
-	files, _ := filepath.Glob("internal/attest/testdata/vectors/*.preimage")
+	files, err := filepath.Glob("internal/attest/testdata/vectors/*.preimage")
+	if err != nil {
+		log.Fatal(err)
+	}
 	for _, f := range files {
-		content, _ := os.ReadFile(f)
+		content, err := os.ReadFile(f)
+		if err != nil {
+			log.Fatal(err)
+		}
 		lines := strings.Split(string(content), "\n")
 		var newLines []string
 		for _, line := range lines {
@@ -20,17 +27,21 @@ func main() {
 				newLines = append(newLines, "checks\t")
 			}
 			if line == "" && len(newLines) > 0 && newLines[len(newLines)-1] != "checks\t" && !strings.Contains(strings.Join(newLines, "\n"), "checks\t") {
-                newLines = append(newLines, "checks\t")
-            }
+				newLines = append(newLines, "checks\t")
+			}
 			newLines = append(newLines, line)
 		}
-        // if no evidence and ends with newline, the last was empty string
+		// if no evidence and ends with newline, the last was empty string
 		res := strings.Join(newLines, "\n")
-        res = strings.Replace(res, "checks\t\n\n", "checks\t\n", -1)
-		os.WriteFile(f, []byte(res), 0644)
+		res = strings.ReplaceAll(res, "checks\t\n\n", "checks\t\n")
+		if err := os.WriteFile(f, []byte(res), 0o644); err != nil {
+			log.Fatal(err)
+		}
 		sum := sha256.Sum256([]byte(res))
 		digest := hex.EncodeToString(sum[:])
-		os.WriteFile(strings.TrimSuffix(f, ".preimage")+".digest", []byte(digest+"\n"), 0644)
+		if err := os.WriteFile(strings.TrimSuffix(f, ".preimage")+".digest", []byte(digest+"\n"), 0o644); err != nil {
+			log.Fatal(err)
+		}
 		fmt.Println("Updated", f, digest)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -25,9 +26,33 @@ const redirectToml = "[[CURRENCIES]]\ncode = \"USDC\"\nissuer = \"" + issuer + "
 // the one the scanner uses.
 func fetcherForServer(srv *httptest.Server) *sep1.Fetcher {
 	f := sep1.NewFetcher()
-	f.HTTP = srv.Client()
-	f.HTTP.CheckRedirect = sep1.CheckRedirect
+	target, err := url.Parse(srv.URL)
+	if err != nil {
+		panic(err)
+	}
+	f.HTTP = &http.Client{
+		Transport:     redirectTestTransport{target: target, base: srv.Client().Transport},
+		CheckRedirect: sep1.CheckRedirect,
+	}
 	return f
+}
+
+type redirectTestTransport struct {
+	target *url.URL
+	base   http.RoundTripper
+}
+
+func (t redirectTestTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	mapped := req.Clone(req.Context())
+	u := *req.URL
+	u.Scheme = t.target.Scheme
+	u.Host = t.target.Host
+	mapped.URL = &u
+	resp, err := t.base.RoundTrip(mapped)
+	if resp != nil {
+		resp.Request = req
+	}
+	return resp, err
 }
 
 // TestRedirectWithinBound follows two same-site hops and expects the document
@@ -48,11 +73,11 @@ func TestRedirectWithinBound(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	doc, err := fetcherForServer(srv).Fetch(context.Background(), domainOf(srv.URL))
+	doc, err := fetcherForServer(srv).Fetch(context.Background(), "circle.com")
 	if err != nil {
 		t.Fatalf("two same-site redirects within the bound: %v", err)
 	}
-	final := srv.URL + "/hop/2"
+	final := "https://circle.com/hop/2"
 	if doc.URL != final {
 		t.Errorf("doc.URL = %q, want the final location %q", doc.URL, final)
 	}
@@ -72,7 +97,7 @@ func TestRedirectExceedingBound(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	_, err := fetcherForServer(srv).Fetch(context.Background(), domainOf(srv.URL))
+	_, err := fetcherForServer(srv).Fetch(context.Background(), "circle.com")
 	if err == nil {
 		t.Fatal("an unbounded redirect chain was followed to completion")
 	}
@@ -90,7 +115,7 @@ func TestRedirectCrossHostRefused(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	_, err := fetcherForServer(srv).Fetch(context.Background(), domainOf(srv.URL))
+	_, err := fetcherForServer(srv).Fetch(context.Background(), "circle.com")
 	if err == nil {
 		t.Fatal("a cross-host redirect was followed and its document accepted as the domain's claim")
 	}

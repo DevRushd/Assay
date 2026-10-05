@@ -90,7 +90,7 @@ type commandDeps struct {
 	stderr io.Writer
 	// scan fetches and classifies one asset. It is injected so tests never
 	// touch the network.
-	scan func(context.Context, mechanics.Asset) (*mechanics.Report, error)
+	scan func(context.Context, mechanics.Asset, []string) (*mechanics.Report, error)
 	// serve starts the HTTP API. It is injected so dispatch can be tested
 	// without binding a port.
 	serve func([]string, *slog.Logger) error
@@ -101,15 +101,15 @@ func defaultDeps() commandDeps {
 	return commandDeps{
 		stdout: os.Stdout,
 		stderr: os.Stderr,
-		scan: func(ctx context.Context, a mechanics.Asset) (*mechanics.Report, error) {
-			return scan.New().Scan(ctx, a)
+		scan: func(ctx context.Context, a mechanics.Asset, lists []string) (*mechanics.Report, error) {
+			return newScanner(lists).Scan(ctx, a)
 		},
 		serve: runServe,
 	}
 }
 
 func usage(w io.Writer) {
-	fmt.Fprint(w, `usage:
+	_, _ = fmt.Fprint(w, `usage:
   assay scan CODE-ISSUER          classify one asset and print the report as JSON
   assay attestation CODE-ISSUER   print the on-chain attest() arguments for one asset
   assay verify [-hash HEX] [-raw] [PREIMAGE]
@@ -150,6 +150,8 @@ func runWith(args []string, d commandDeps) error {
 		return runAttestation(args[1:], d)
 	case "history":
 		return runHistory(args[1:], d)
+	case "verify":
+		return runVerify(args[1:], d)
 	case "serve":
 		return d.serve(args[1:], log)
 	default:
@@ -158,7 +160,7 @@ func runWith(args []string, d commandDeps) error {
 	}
 }
 
-func runScan(args []string) error {
+func runScan(args []string, d commandDeps) error {
 	fs := flag.NewFlagSet("scan", flag.ContinueOnError)
 	assetLists := assetListFlags(fs)
 	if err := fs.Parse(args); err != nil {
@@ -175,7 +177,7 @@ func runScan(args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	report, err := newScanner(assetLists()).Scan(ctx, asset)
+	report, err := d.scan(ctx, asset, assetLists())
 	if err != nil {
 		return err
 	}
@@ -254,7 +256,7 @@ func runAttestation(args []string, d commandDeps) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	report, err := newScanner(assetLists()).Scan(ctx, asset)
+	report, err := d.scan(ctx, asset, assetLists())
 	if err != nil {
 		return err
 	}
@@ -299,7 +301,7 @@ func runHistory(args []string, d commandDeps) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	report, err := newScanner(assetLists()).Scan(ctx, asset)
+	report, err := d.scan(ctx, asset, assetLists())
 	if err != nil {
 		return err
 	}
@@ -308,7 +310,9 @@ func runHistory(args []string, d commandDeps) error {
 
 	if len(hist) == 0 {
 		msg := "assay history: no observations for " + asset.String()
-		fmt.Fprintln(d.stdout, msg)
+		if _, err := fmt.Fprintln(d.stdout, msg); err != nil {
+			return err
+		}
 		if *guarantee {
 			return fmt.Errorf("no history")
 		}
@@ -317,7 +321,9 @@ func runHistory(args []string, d commandDeps) error {
 
 	if *raw {
 		for _, h := range hist {
-			fmt.Fprintf(d.stdout, "%s\t%s\t%s\t%s\n", h.Asset, h.Severity, h.Transition, h.Reason)
+			if _, err := fmt.Fprintf(d.stdout, "%s\t%s\t%s\t%s\n", h.Asset, h.Severity, h.Transition, h.Reason); err != nil {
+				return err
+			}
 		}
 		return nil
 	}
@@ -397,12 +403,6 @@ func runServe(args []string, log *slog.Logger) error {
 		return err
 	}
 
-	// The cache lives as long as the server process, which is where it earns
-	// its keep: repeated scans of the same issuer reuse an answer instead of
-	// re-reading a free service on every request.
-	srv := &http.Server{
-		Addr:              *addr,
-		Handler:           api.NewServerWithScanner(scan.NewWithOptions(cache()), log).Handler(),
 	srv := api.NewServer(log)
 	// The server is where a list configuration matters most: every scan it
 	// serves consults the same configured lists, attributed the same way, and
@@ -428,23 +428,6 @@ func runServe(args []string, log *slog.Logger) error {
 	defer stop()
 
 	errChan := make(chan error, 1)
-	go func() {
-		log.Info("assay listening", "addr", *addr)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			errChan <- err
-		}
-	}()
-
-	select {
-	case err := <-errChan:
-		return err
-	case <-ctx.Done():
-		log.Info("shutting down server gracefully")
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		return srv.Shutdown(shutdownCtx)
-	}
-errChan := make(chan error, 1)
 	go func() {
 		log.Info("assay listening", "addr", *addr, "history", *historyPath)
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {

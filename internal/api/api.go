@@ -28,8 +28,6 @@ type Scanner interface {
 
 // Server serves scan results and recorded observation history.
 type Server struct {
-// Server serves scan results and recorded observation history.
-type Server struct {
 	Scanner Scanner
 	// History stores one observation per successful scan. It is a pointer so a
 	// caller can replace the default in-memory store with a file-backed one
@@ -154,7 +152,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-if s.History != nil {
+	if s.History != nil {
 		if err := s.History.Append(temporal.ObservationFromReport(report)); err != nil {
 			s.Log.Error("history append failed", "asset", asset.String(), "err", err)
 		}

@@ -17,7 +17,7 @@ const (
 	linkedURL    = "https://centre.example/.well-known/USDC.toml"
 )
 
-func domainSubject(t *testing.T, toml string) *mechanics.Subject {
+func linkedDomainSubject(t *testing.T, toml string) *mechanics.Subject {
 	t.Helper()
 	fetched := time.Date(2026, 9, 27, 0, 0, 0, 0, time.UTC)
 	s := &mechanics.Subject{
@@ -39,7 +39,7 @@ func domainSubject(t *testing.T, toml string) *mechanics.Subject {
 	return s
 }
 
-func runDomain(t *testing.T, s *mechanics.Subject) mechanics.Finding {
+func runLinkedDomain(t *testing.T, s *mechanics.Subject) mechanics.Finding {
 	t.Helper()
 	f, err := mechanics.DomainCheck{}.Run(context.Background(), s)
 	if err != nil {
@@ -56,7 +56,7 @@ toml = "https://centre.example/.well-known/USDC.toml"
 // TestDomainLinkedClaimVerified: a match in a followed linked document is a
 // claim, and produces verified accountability.
 func TestDomainLinkedClaimVerified(t *testing.T) {
-	s := domainSubject(t, linkedToml)
+	s := linkedDomainSubject(t, linkedToml)
 	fetched := time.Date(2026, 9, 27, 0, 0, 5, 0, time.UTC)
 	s.TomlLinked = &sep1.LinkedResolution{
 		Attempted:  1,
@@ -71,7 +71,7 @@ func TestDomainLinkedClaimVerified(t *testing.T) {
 		}},
 	}
 
-	f := runDomain(t, s)
+	f := runLinkedDomain(t, s)
 	if f.Accountability == nil || *f.Accountability != mechanics.AccountabilityVerified {
 		t.Fatalf("accountability = %v, want verified", f.Accountability)
 	}
@@ -92,13 +92,13 @@ func TestDomainLinkedClaimVerified(t *testing.T) {
 // TestDomainLinkedNoneClaimRefused: every link was read and none names the
 // asset, which is a genuine refusal, not an unresolved hedge.
 func TestDomainLinkedNoneClaimRefused(t *testing.T) {
-	s := domainSubject(t, linkedToml)
+	s := linkedDomainSubject(t, linkedToml)
 	s.TomlLinked = &sep1.LinkedResolution{
 		Attempted: 1,
 		Docs:      []sep1.LinkedDoc{{URL: linkedURL, Doc: &sep1.Doc{}}},
 	}
 
-	f := runDomain(t, s)
+	f := runLinkedDomain(t, s)
 	if f.Accountability == nil || *f.Accountability != mechanics.AccountabilityUnverified {
 		t.Fatalf("accountability = %v, want unverified", f.Accountability)
 	}
@@ -116,13 +116,13 @@ func TestDomainLinkedNoneClaimRefused(t *testing.T) {
 // TestDomainLinkedUnfetchableUnresolved: a link that could not be read leaves
 // the answer unresolved. The evidence is marked Attempted, never Refused.
 func TestDomainLinkedUnfetchableUnresolved(t *testing.T) {
-	s := domainSubject(t, linkedToml)
+	s := linkedDomainSubject(t, linkedToml)
 	s.TomlLinked = &sep1.LinkedResolution{
 		Attempted: 1,
 		Docs:      []sep1.LinkedDoc{{URL: linkedURL, Err: "connection refused"}},
 	}
 
-	f := runDomain(t, s)
+	f := runLinkedDomain(t, s)
 	if f.Accountability == nil || *f.Accountability != mechanics.AccountabilityUnverified {
 		t.Fatalf("accountability = %v, want unverified", f.Accountability)
 	}
@@ -146,14 +146,14 @@ func TestDomainLinkedUnfetchableUnresolved(t *testing.T) {
 // TestDomainLinkedBoundUnresolved: reaching the follow bound leaves the answer
 // unresolved and says the bound was hit.
 func TestDomainLinkedBoundUnresolved(t *testing.T) {
-	s := domainSubject(t, linkedToml)
+	s := linkedDomainSubject(t, linkedToml)
 	docs := make([]sep1.LinkedDoc, 0, sep1.MaxLinkedDocuments)
 	for i := 0; i < sep1.MaxLinkedDocuments; i++ {
 		docs = append(docs, sep1.LinkedDoc{URL: linkedURL, Doc: &sep1.Doc{}})
 	}
 	s.TomlLinked = &sep1.LinkedResolution{Attempted: sep1.MaxLinkedDocuments, Deferred: 3, Docs: docs}
 
-	f := runDomain(t, s)
+	f := runLinkedDomain(t, s)
 	if f.Accountability == nil || *f.Accountability != mechanics.AccountabilityUnverified {
 		t.Fatalf("accountability = %v, want unverified", f.Accountability)
 	}
@@ -174,11 +174,11 @@ func TestDomainLinkedBoundUnresolved(t *testing.T) {
 // TestDomainRefusedHostRecorded: a non-public home_domain is a refusal, not an
 // outage. It is reported as attributed evidence marked Refused.
 func TestDomainRefusedHostRecorded(t *testing.T) {
-	s := domainSubject(t, "")
+	s := linkedDomainSubject(t, "")
 	s.TomlRefused = true
 	s.TomlErr = "sep1: refusing non-public host \"10.0.0.1\": private address (RFC 1918 / RFC 4193)"
 
-	f := runDomain(t, s)
+	f := runLinkedDomain(t, s)
 	if f.Accountability == nil || *f.Accountability != mechanics.AccountabilityUnverified {
 		t.Fatalf("accountability = %v, want unverified", f.Accountability)
 	}
@@ -206,8 +206,8 @@ func TestDomainRefusedHostRecorded(t *testing.T) {
 // TestDomainInlineClaimStillVerified is the regression guard: resolving links
 // must not disturb the round-trip check for an inline claim.
 func TestDomainInlineClaimStillVerified(t *testing.T) {
-	s := domainSubject(t, "[[CURRENCIES]]\ncode=\"USDC\"\nissuer=\""+testIssuer+"\"\n")
-	f := runDomain(t, s)
+	s := linkedDomainSubject(t, "[[CURRENCIES]]\ncode=\"USDC\"\nissuer=\""+testIssuer+"\"\n")
+	f := runLinkedDomain(t, s)
 	if f.Accountability == nil || *f.Accountability != mechanics.AccountabilityVerified {
 		t.Fatalf("inline claim accountability = %v, want verified", f.Accountability)
 	}

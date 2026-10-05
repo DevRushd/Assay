@@ -1,19 +1,15 @@
 package api_test
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/use-assay/assay/internal/api"
-	"github.com/use-assay/assay/internal/horizon"
-	"github.com/use-assay/assay/internal/mechanics"
-	"strings"
 )
 
 func newTestServer() http.Handler {

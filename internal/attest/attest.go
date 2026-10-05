@@ -22,10 +22,9 @@ import (
 	"github.com/use-assay/assay/internal/mechanics"
 )
 
-// PreimageVersion is the first line of every canonical preimage. It is part of
-// what gets hashed, so a future encoding change cannot silently produce a hash
-// that a verifier would compare against v1 bytes.
-const PreimageVersion = "assay-evidence-v2"
+// PreimageVersion is the original canonical format and remains the encoding
+// for reports that do not opt into newer bindings.
+const PreimageVersion = "assay-evidence-v1"
 
 // PreimageVersionCheckSet is the encoding used once a report binds its check
 // set. It adds a `checks` line naming the checks the engine actually ran, so a
@@ -51,6 +50,15 @@ const PreimageVersionCheckSet = "assay-evidence-v2"
 // network is still written under its earlier encoding, and only scans that
 // name their network hash as v3.
 const PreimageVersionNetwork = "assay-evidence-v3"
+
+// ScannerIdentity is the module version embedded in scanner-bound preimages.
+var ScannerIdentity = func() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok || info.Main.Version == "" || info.Main.Version == "(devel)" {
+		return "devel"
+	}
+	return info.Main.Version
+}()
 
 // Params is one attest() call: the arguments, and nothing else.
 //
@@ -97,9 +105,12 @@ var ErrUnevaluated = errors.New("attest: capability axis was never evaluated, so
 type ProvenanceStatus string
 
 const (
-	ProvenanceValid   ProvenanceStatus = "valid"   // ProvenanceValid means the scanner version meets the caller's minimum.
-	ProvenanceInvalid ProvenanceStatus = "invalid" // Version below caller's minimum
-	ProvenanceUnknown ProvenanceStatus = "unknown" // No version recorded (pre-v2 attestation)
+	// ProvenanceValid means the scanner version meets the caller's minimum.
+	ProvenanceValid ProvenanceStatus = "valid"
+	// ProvenanceInvalid means the recorded version is below the caller's minimum.
+	ProvenanceInvalid ProvenanceStatus = "invalid"
+	// ProvenanceUnknown means no scanner version was recorded.
+	ProvenanceUnknown ProvenanceStatus = "unknown"
 )
 
 // ErrUnknownProvenance reports an attestation produced without version binding (pre-v2).
@@ -296,17 +307,14 @@ func Preimage(rep *mechanics.Report) string {
 	line(&b, "escalated", strconv.FormatBool(rep.Escalated))
 	line(&b, "mechanics", strconv.FormatUint(uint64(rep.Mechanics), 10))
 	line(&b, "accountability", string(rep.Accountability))
-	line(&b, "checks", strings.Join(rep.Checks, ","))
-
-	// A bound check set is written as its own line so a verifier can name the
-	// checks a report is missing. Reports with no check set omit it entirely,
-	// keeping their bytes identical to the v1 encoding.
 	if len(rep.CheckSet) > 0 {
 		checks := append([]string(nil), rep.CheckSet...)
 		sort.Strings(checks)
 		line(&b, "checks", strings.Join(checks, ","))
 	}
-
+	// A bound check set is written as its own line so a verifier can name the
+	// checks a report is missing. Reports with no check set omit it entirely,
+	// keeping their bytes identical to the v1 encoding.
 	// A bound network is written after the check set and before the evidence:
 	// the encoding is line-oriented, so a new field takes a fixed position and
 	// every earlier encoding must keep rendering byte-identically without it.
@@ -340,7 +348,7 @@ func Preimage(rep *mechanics.Report) string {
 // byte format completely.
 func preimageVersion(rep *mechanics.Report) string {
 	switch {
-	case rep.Network != "":
+	case rep.Network != "" || rep.ScannerBound:
 		return PreimageVersionNetwork
 	case len(rep.CheckSet) > 0:
 		return PreimageVersionCheckSet

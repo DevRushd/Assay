@@ -172,12 +172,11 @@ func ParseAccountFlags(entryXDR []byte) (horizon.Flags, error) {
 		return horizon.Flags{}, fmt.Errorf("%w: public key type %d", ErrNotAccount, u32(entryXDR, 4))
 	}
 
-	flagsOffset := accountEntryKeyOffset // 44
+	flagsOffset := 100
 	// Wait — the account key framing: LedgerEntryData disc (4) + PublicKey tag
 	// (4) + key (32) = 40, then balance (8) to 48, seqNum (8) to 56,
 	// numSubEntries (4) to 60, inflationDest tag (4) to 64, and the
 	// inflationDest PublicKey, when present, is another 4 + 32 = 36 to 100.
-	flagsOffset = 100
 	if u32(entryXDR, 60) == 0 {
 		flagsOffset = 64
 	}
