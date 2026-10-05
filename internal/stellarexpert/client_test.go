@@ -167,7 +167,7 @@ func TestRetry429Then200Succeeds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Directory after retry: %v", err)
 	}
-	if entry == nil || entry.Name != "Zeam.Money" {
+	if entry.Value == nil || entry.Value.Name != "Zeam.Money" {
 		t.Fatalf("wanted the real entry, got %+v", entry)
 	}
 }
@@ -191,7 +191,7 @@ func TestRetry404IsNotRetried(t *testing.T) {
 	if err != nil {
 		t.Fatalf("404 was retried: %v", err)
 	}
-	if entry != nil {
+	if entry.Value != nil {
 		t.Fatalf("404 reported as a listing: %+v", entry)
 	}
 }

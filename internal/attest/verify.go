@@ -110,7 +110,7 @@ func ParsePreimage(pre []byte) (PreimageInfo, error) {
 
 	info := PreimageInfo{Version: lines[0]}
 	switch info.Version {
-	case PreimageVersion, PreimageVersionCheckSet:
+	case PreimageVersion, PreimageVersionCheckSet, PreimageVersionNetwork:
 	default:
 		return PreimageInfo{}, fmt.Errorf("attest: unrecognised preimage version %q", info.Version)
 	}

@@ -44,6 +44,12 @@ func NewCanonicalTime(t time.Time) CanonicalTime {
 // Time returns the underlying instant.
 func (c CanonicalTime) Time() time.Time { return time.Time(c) }
 
+// Equal reports whether c and t represent the same instant.
+func (c CanonicalTime) Equal(t time.Time) bool { return c.Time().Equal(t) }
+
+// Format renders the underlying time with the requested layout.
+func (c CanonicalTime) Format(layout string) string { return c.Time().Format(layout) }
+
 // IsZero reports whether the instant is the zero time, mirroring
 // time.Time.IsZero for callers that treat a missing stamp as unknown.
 func (c CanonicalTime) IsZero() bool { return c.Time().IsZero() }
@@ -87,9 +93,10 @@ func (a Asset) String() string { return a.Code + "-" + a.Issuer }
 // outside claim by constructing an Evidence with its source and URL, there is
 // no code path that renders someone else's data as an Assay conclusion.
 type Evidence struct {
-	Source string `json:"source"`
-	URL    string `json:"url"`
-	Claim  string `json:"claim"`
+	Source       string `json:"source"`
+	URL          string `json:"url"`
+	RequestedURL string `json:"requested_url,omitempty"`
+	Claim        string `json:"claim"`
 	// RetrievedAt is when this specific fact was observed from the source
 	// (or when the attempt was made, if the fetch failed).
 	//
@@ -99,7 +106,7 @@ type Evidence struct {
 	// When a fetch fails, RetrievedAt carries the attempt time, Attempted is
 	// true, and Claim reads "not retrievable: <reason>". An absent retrieval
 	// time is never represented as a zero timestamp. See docs/timestamps.md.
-	RetrievedAt time.Time `json:"retrieved_at"`
+	RetrievedAt CanonicalTime `json:"retrieved_at"`
 	// Attempted marks evidence whose RetrievedAt is the time the fetch was
 	// ATTEMPTED, not the time the source answered: the fetch failed, so there
 	// is no completion time to record. The Claim of such evidence always reads
@@ -325,47 +332,6 @@ type AssetListSignal struct {
 	Err string
 }
 
-// AssetListSignal is one configured SEP-0042 list's result for the asset under
-// scan, attributed to the list that published it: its own name, its own URL and
-// its own retrieval time, never merged with another source's answer.
-//
-// It is evidence only. SEP-0042 states that "inclusion of any particular asset
-// in a list should not be considered as endorsement or recommendation of any
-// kind", so presence never moves severity in either direction — see
-// docs/severity-model.md: severity is capability-only, and absence from a list
-// is not an observation at all.
-type AssetListSignal struct {
-	// Name and Provider are the list's own self-description, and identify the
-	// source in the report. Both are empty when the list could not be read, in
-	// which case only URL identifies it.
-	Name     string
-	Provider string
-	// URL is where the list was fetched from, so the reader can re-fetch
-	// exactly what was read.
-	URL string
-	// Version and Network are recorded as published and are not checked
-	// against the ledger.
-	Version string
-	Network string
-
-	// Entry is the list's own entry for this asset, populated only when a match
-	// was found in a list that was actually read.
-	Entry *assetlist.Asset
-	// Listed is meaningful only when Err is empty: a list that could not be
-	// read gave no answer, and no answer must never render as absence.
-	Listed bool
-
-	// FetchedAt is when this list was retrieved — the time of the fetch, not
-	// the time of the scan.
-	FetchedAt time.Time
-	// AttemptedAt is when the list was asked. Always set, so failure evidence
-	// always has a time to carry.
-	AttemptedAt time.Time
-	// Err records why the list could not be read, verbatim. Empty means it was
-	// read.
-	Err string
-}
-
 // ReportSchemaVersion is the current value Report.SchemaVersion marshals as
 // (issue #44). Bump it on any breaking change to the report JSON shape; see
 // the compatibility rule on the field.
@@ -489,6 +455,8 @@ type Report struct {
 	// check-set binding carry no CheckSet and are read as "unknown", never as
 	// "complete".
 	CheckSet []string `json:"checks,omitempty"`
+	// Checks is retained for the legacy evidence preimage encoding.
+	Checks []string `json:"-"`
 
 	// ScannerBound opts this report into the v3 preimage encoding, which
 	// adds a `scanner` line naming the code that produced the report
@@ -505,23 +473,12 @@ type Report struct {
 	MechanicNames []string   `json:"mechanics"`
 	Findings      []Finding  `json:"findings"`
 	Evidence      []Evidence `json:"evidence"`
-	ScannedAt     time.Time  `json:"scanned_at"`
+	ScannedAt     CanonicalTime `json:"scanned_at"`
 
 	// ObservationWindowStart is the start of the observation window for this report.
 	ObservationWindowStart time.Time `json:"observation_window_start,omitempty"`
 	// ObservationWindowEnd is the end of the observation window for this report.
 	ObservationWindowEnd time.Time `json:"observation_window_end,omitempty"`
-	// ScannedAt is when the scan run started (the Subject.ScannedAt timestamp).
-	// It is the report-level timestamp.
-	//
-	// Clock source: scanner host wall clock (time.Now().UTC()).
-	// Precision: nanoseconds in memory (time.Time), formatted as RFC 3339 in JSON.
-	//
-	// Because individual sources are fetched sequentially over an outer context
-	// timeout of up to 30 seconds, ScannedAt is an approximation across the
-	// sequential fetch window; individual Evidence items carry their own
-	// RetrievedAt completion times. See docs/timestamps.md.
-	ScannedAt time.Time `json:"scanned_at"`
 }
 
 // Engine runs a set of checks over a Subject.
@@ -584,12 +541,14 @@ func (e *Engine) Run(ctx context.Context, s *Subject) (*Report, error) {
 	rep := &Report{
 		SchemaVersion:      ReportSchemaVersion,
 		Asset:              s.Asset,
+		Network:            s.Network,
 		Accountability:     AccountabilityUnknown,
 		ScannedAt:          CanonicalTime(scannedAt),
 		CheckSet:           e.CheckIDs(),
 		Findings:           []Finding{},
 		Evidence:           []Evidence{},
 		UndeterminedChecks: []string{},
+		UndeterminedBySource: map[string]int{},
 	}
 
 	totalChecks := len(e.Checks)

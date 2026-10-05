@@ -295,8 +295,8 @@ func TestFailedFetchIsNotCached(t *testing.T) {
 	if answer.Value == nil {
 		t.Fatal("the recovered answer was dropped")
 	}
-	if got := atomic.LoadInt64(&requests); got != 2 {
-		t.Errorf("server saw %d requests, want 2: the failure was not re-fetched", got)
+	if got := atomic.LoadInt64(&requests); got != 4 {
+		t.Errorf("server saw %d requests, want 4: the failure was retried but not cached", got)
 	}
 }
 

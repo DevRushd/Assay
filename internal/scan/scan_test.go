@@ -242,8 +242,8 @@ func TestTimeout(t *testing.T) {
 	if sub.TomlErr == "" {
 		t.Error("expected TomlErr to be set for slow source")
 	}
-	if !strings.Contains(sub.TomlErr, "context deadline exceeded") && !strings.Contains(sub.TomlErr, "deadline") {
-		t.Errorf("TomlErr = %q, want context deadline exceeded", sub.TomlErr)
+	if sub.TomlErr != "timeout" {
+		t.Errorf("TomlErr = %q, want canonical timeout category", sub.TomlErr)
 	}
 
 	// Blocked and Directory finished normally and were not starved
@@ -464,9 +464,9 @@ func TestCacheHitDoesNotRefreshEvidenceTime(t *testing.T) {
 		if ev.Attempted {
 			t.Errorf("%s evidence marked Attempted on a cache hit", ev.Source)
 		}
-		if !ev.RetrievedAt.Equal(at) {
+		if !ev.RetrievedAt.Time().Equal(at.Truncate(time.Second)) {
 			t.Errorf("%s evidence RetrievedAt = %s, want the original fetch time %s",
-				ev.Source, ev.RetrievedAt.Format(time.RFC3339Nano), at.Format(time.RFC3339Nano))
+				ev.Source, ev.RetrievedAt.Format(time.RFC3339Nano), at.Truncate(time.Second).Format(time.RFC3339Nano))
 		}
 	}
 	for source := range want {

@@ -37,6 +37,17 @@ const version = "v0.1.0"
 // asked for more than this, rather than assuming it.
 const MaxBody = 1 << 20 // 1 MiB
 
+// MaxRedirects bounds redirects followed while retrieving a stellar.toml.
+const MaxRedirects = 5
+
+const (
+	FailureConnectionRefused = "connection-refused"
+	FailureDNS               = "dns-failure"
+	FailureTimeout           = "timeout"
+	FailureHostRefused       = "host-refused"
+	FailureFetch             = "fetch-failure"
+)
+
 // MaxLinkedDocuments bounds how many per-currency TOML links Assay follows for
 // a single issuer stellar.toml. SEP-0001 allows a CURRENCIES entry to carry
 // `toml="https://DOMAIN/.well-known/CURRENCY.toml"` as its only field, and a
@@ -62,6 +73,34 @@ var ErrNoDomain = errors.New("sep1: issuer has no home_domain")
 // the server can reach. The refusal is deliberate and is recorded as
 // attributed evidence, not smoothed into an ordinary source outage.
 var ErrNonPublicHost = errors.New("sep1: home_domain names a non-public host")
+
+// CanonicalFailure maps transport errors to stable categories that exclude
+// hostnames, addresses, and other machine-dependent details.
+func CanonicalFailure(err error) string {
+	if err == nil {
+		return ""
+	}
+	if errors.Is(err, ErrNonPublicHost) {
+		return FailureHostRefused
+	}
+
+	message := strings.ToLower(err.Error())
+	if errors.Is(err, syscall.ECONNREFUSED) || strings.Contains(message, "connection refused") {
+		return FailureConnectionRefused
+	}
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) || strings.Contains(message, "no such host") ||
+		strings.Contains(message, "temporary failure in name resolution") ||
+		strings.Contains(message, "server misbehaving") {
+		return FailureDNS
+	}
+	var netErr net.Error
+	if errors.Is(err, context.DeadlineExceeded) || errors.As(err, &netErr) && netErr.Timeout() ||
+		strings.Contains(message, "deadline exceeded") || strings.Contains(message, "timeout") {
+		return FailureTimeout
+	}
+	return FailureFetch
+}
 
 // HostRefusedError is returned when a fetch is refused by host policy. It is
 // distinguishable from an ordinary fetch failure (errors.Is with

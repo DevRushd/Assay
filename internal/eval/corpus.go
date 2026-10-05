@@ -193,7 +193,7 @@ func Corpus() []Label {
 				// a failed verification — and still carries the unverified bit,
 				// because no identity was published to verify against.
 				"sep1-domain": {Severity: mechanics.Clear, Mechanics: mechanics.MechDomainUnverified},
-				"reputation":  {Severity: mechanics.Clear, Escalation: true},
+				"reputation":  {Severity: mechanics.Clear, Escalation: true, Undetermined: true},
 			},
 		},
 	}

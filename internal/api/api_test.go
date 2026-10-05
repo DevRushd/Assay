@@ -1,9 +1,7 @@
 package api_test
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -11,8 +9,6 @@ import (
 	"testing"
 
 	"github.com/use-assay/assay/internal/api"
-	"github.com/use-assay/assay/internal/horizon"
-	"github.com/use-assay/assay/internal/mechanics"
 	"strings"
 )
 

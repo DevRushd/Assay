@@ -119,7 +119,7 @@ func TestFailClosedPartialScanIsRefusedAtEverySeverity(t *testing.T) {
 func TestFailClosedStaleScanCannotBeMadeFresh(t *testing.T) {
 	old := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	params, err := attest.FromReport(report(func(r *mechanics.Report) {
-		r.ScannedAt = old
+		r.ScannedAt = mechanics.NewCanonicalTime(old)
 	}))
 	if err != nil {
 		t.Fatalf("FromReport: %v", err)

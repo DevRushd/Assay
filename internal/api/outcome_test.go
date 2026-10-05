@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/use-assay/assay/internal/api"
+	"github.com/use-assay/assay/internal/scan"
 )
 
 // A valid mainnet asset: USDC. Its issuer has no home_domain dependency in
@@ -78,14 +79,15 @@ func newLogServer(t *testing.T) *logServer {
 	horizon := &horizonStub{}
 	hSrv := httptest.NewServer(horizon)
 	t.Cleanup(hSrv.Close)
-	srv.Scanner.Horizon.BaseURL = hSrv.URL
+	productionScanner := srv.Scanner.(*scan.Scanner)
+	productionScanner.Horizon.BaseURL = hSrv.URL
 
 	// expertStub answers every StellarExpert endpoint with a well-formed
 	// "nothing listed" answer.
 	expert := &expertStub{}
 	eSrv := httptest.NewServer(expert)
 	t.Cleanup(eSrv.Close)
-	srv.Scanner.Expert.BaseURL = eSrv.URL
+	productionScanner.Expert.BaseURL = eSrv.URL
 
 	return &logServer{
 		srv:     srv,

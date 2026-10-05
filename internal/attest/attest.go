@@ -52,6 +52,15 @@ const PreimageVersionCheckSet = "assay-evidence-v2"
 // name their network hash as v3.
 const PreimageVersionNetwork = "assay-evidence-v3"
 
+// ScannerIdentity is the module version embedded in scanner-bound preimages.
+var ScannerIdentity = func() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok || info.Main.Version == "" || info.Main.Version == "(devel)" {
+		return "devel"
+	}
+	return info.Main.Version
+}()
+
 // Params is one attest() call: the arguments, and nothing else.
 //
 // Asset is the classic identifier the scanner read. The contract keys on the
@@ -296,16 +305,15 @@ func Preimage(rep *mechanics.Report) string {
 	line(&b, "escalated", strconv.FormatBool(rep.Escalated))
 	line(&b, "mechanics", strconv.FormatUint(uint64(rep.Mechanics), 10))
 	line(&b, "accountability", string(rep.Accountability))
-	line(&b, "checks", strings.Join(rep.Checks, ","))
-
-	// A bound check set is written as its own line so a verifier can name the
-	// checks a report is missing. Reports with no check set omit it entirely,
-	// keeping their bytes identical to the v1 encoding.
-	if len(rep.CheckSet) > 0 {
-		checks := append([]string(nil), rep.CheckSet...)
-		sort.Strings(checks)
-		line(&b, "checks", strings.Join(checks, ","))
+	checks := rep.CheckSet
+	if len(checks) == 0 {
+		checks = rep.Checks
 	}
+	checks = append([]string(nil), checks...)
+	sort.Strings(checks)
+	line(&b, "checks", strings.Join(checks, ","))
+	// A bound check set is written as its own line so a verifier can name the
+	// checks a report is missing. Empty remains the legacy unbound representation.
 
 	// A bound network is written after the check set and before the evidence:
 	// the encoding is line-oriented, so a new field takes a fixed position and
@@ -340,7 +348,7 @@ func Preimage(rep *mechanics.Report) string {
 // byte format completely.
 func preimageVersion(rep *mechanics.Report) string {
 	switch {
-	case rep.Network != "":
+	case rep.Network != "" || rep.ScannerBound:
 		return PreimageVersionNetwork
 	case len(rep.CheckSet) > 0:
 		return PreimageVersionCheckSet

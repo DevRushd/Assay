@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/use-assay/assay/internal/api"
+	"github.com/use-assay/assay/internal/scan"
 )
 
 // newProbeServer returns a Server whose scanner is wired to the given stub
@@ -22,8 +23,9 @@ import (
 func newProbeServer(horizonRoot, expertRoot string) (*api.Server, http.Handler) {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	srv := api.NewServer(log)
-	srv.Scanner.Horizon.BaseURL = horizonRoot
-	srv.Scanner.Expert.BaseURL = expertRoot
+	productionScanner := srv.Scanner.(*scan.Scanner)
+	productionScanner.Horizon.BaseURL = horizonRoot
+	productionScanner.Expert.BaseURL = expertRoot
 	return srv, srv.Handler()
 }
 

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/use-assay/assay/internal/attest"
+	"github.com/use-assay/assay/internal/horizon"
 	"github.com/use-assay/assay/internal/mechanics"
 	"github.com/use-assay/assay/internal/stellarexpert"
 )
@@ -46,19 +47,21 @@ func TestDirectoryNameInjectionCannotForgePreimage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Directory: %v", err)
 	}
-	if entry == nil {
+	if entry.Value == nil {
 		t.Fatal("the stubbed entry was dropped; the test would prove nothing")
 	}
 	// If the control characters did not survive decoding, the rest of the test
 	// is vacuous rather than passing.
-	if !strings.ContainsRune(entry.Name, '\n') || !strings.ContainsRune(entry.Name, '\t') || !strings.ContainsRune(entry.Name, '\r') {
-		t.Fatalf("hostile name did not survive decoding: %q", entry.Name)
+	if !strings.ContainsRune(entry.Value.Name, '\n') || !strings.ContainsRune(entry.Value.Name, '\t') || !strings.ContainsRune(entry.Value.Name, '\r') {
+		t.Fatalf("hostile name did not survive decoding: %q", entry.Value.Name)
 	}
 
 	sub := &mechanics.Subject{
 		Asset:        mechanics.Asset{Code: "DOGE", Issuer: issuer},
-		Directory:    entry,
+		Issuer:       &horizon.Account{AccountID: issuer, HomeDomain: "evil.example"},
+		Directory:    entry.Value,
 		DirectoryURL: client.DirectoryURL(issuer),
+		Blocked:      &stellarexpert.BlockedDomain{Domain: "evil.example", Blocked: false},
 	}
 	// Only the reputation check: the claim under test is the one this check
 	// builds from the hostile directory entry.
@@ -73,17 +76,17 @@ func TestDirectoryNameInjectionCannotForgePreimage(t *testing.T) {
 		t.Fatalf("FromReport: %v", err)
 	}
 
-	// Expected shape: version + six header fields + the bound check set + one
+	// Expected shape: version + six header fields + the bound check set + three
 	// evidence line, with the hostile text escaped inside its own field. A
 	// stray newline or an injected record would move this count.
-	const wantLines = 9
+	const wantLines = 11
 	if got := strings.Count(params.Preimage, "\n"); got != wantLines {
 		t.Fatalf("hostile text changed the preimage line count: got %d, want %d\n%s", got, wantLines, params.Preimage)
 	}
 
 	evidence := evidenceLines(params.Preimage)
-	if len(evidence) != 1 {
-		t.Fatalf("expected exactly one evidence line, got %d:\n%s", len(evidence), params.Preimage)
+	if len(evidence) != 3 {
+		t.Fatalf("expected blocklist and two directory evidence lines, got %d:\n%s", len(evidence), params.Preimage)
 	}
 	// A forged line would show up as an extra record attributed to a source the
 	// hostile text named rather than the real one.
@@ -93,8 +96,18 @@ func TestDirectoryNameInjectionCannotForgePreimage(t *testing.T) {
 	// Exactly four tab-separated fields: "evidence", source, URL, claim. A raw
 	// tab in the claim — from a control character that escaped its field, or a
 	// backslash-t that was decoded — would add a field.
-	if fields := strings.Split(evidence[0], "\t"); len(fields) != 4 {
-		t.Fatalf("evidence line has %d tab-separated fields, want 4 (a control character left its field):\n%q", len(fields), evidence[0])
+	var hostileLine string
+	for _, line := range evidence {
+		if strings.Contains(line, "Evil") {
+			hostileLine = line
+			break
+		}
+	}
+	if hostileLine == "" {
+		t.Fatalf("directory evidence with the hostile name was missing:\n%s", params.Preimage)
+	}
+	if fields := strings.Split(hostileLine, "\t"); len(fields) != 4 {
+		t.Fatalf("evidence line has %d tab-separated fields, want 4 (a control character left its field):\n%q", len(fields), hostileLine)
 	}
 	// The literal backslash-t in the name must be escaped to `\\t`, not decoded
 	// into a real tab.
