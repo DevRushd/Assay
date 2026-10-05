@@ -86,8 +86,8 @@ var ErrNoDomain = errors.New("sep1: issuer has no home_domain")
 // attributed evidence, not smoothed into an ordinary source outage.
 var ErrNonPublicHost = errors.New("sep1: home_domain names a non-public host")
 
-// CanonicalFailure maps transport errors to stable categories that do not
-// include hostnames, addresses, or other machine-dependent details.
+// CanonicalFailure maps transport errors to stable categories that exclude
+// hostnames, addresses, and other machine-dependent details.
 func CanonicalFailure(err error) string {
 	if err == nil {
 		return ""
