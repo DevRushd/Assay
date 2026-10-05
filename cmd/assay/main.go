@@ -90,7 +90,7 @@ type commandDeps struct {
 	stderr io.Writer
 	// scan fetches and classifies one asset. It is injected so tests never
 	// touch the network.
-	scan func(context.Context, mechanics.Asset, []string) (*mechanics.Report, error)
+	scan func(context.Context, mechanics.Asset) (*mechanics.Report, error)
 	// serve starts the HTTP API. It is injected so dispatch can be tested
 	// without binding a port.
 	serve func([]string, *slog.Logger) error
@@ -101,8 +101,8 @@ func defaultDeps() commandDeps {
 	return commandDeps{
 		stdout: os.Stdout,
 		stderr: os.Stderr,
-		scan: func(ctx context.Context, a mechanics.Asset, lists []string) (*mechanics.Report, error) {
-			return newScanner(lists).Scan(ctx, a)
+		scan: func(ctx context.Context, a mechanics.Asset) (*mechanics.Report, error) {
+			return scan.New().Scan(ctx, a)
 		},
 		serve: runServe,
 	}
@@ -151,7 +151,7 @@ func runWith(args []string, d commandDeps) error {
 	case "history":
 		return runHistory(args[1:], d)
 	case "verify":
-		return runVerify(args[1:], d)
+		return runVerify(args[1:])
 	case "serve":
 		return d.serve(args[1:], log)
 	default:
@@ -177,7 +177,7 @@ func runScan(args []string, d commandDeps) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	report, err := d.scan(ctx, asset, assetLists())
+	report, err := scanFuncFor(assetLists(), d)(ctx, asset)
 	if err != nil {
 		return err
 	}
@@ -185,6 +185,17 @@ func runScan(args []string, d commandDeps) error {
 	enc := json.NewEncoder(d.stdout)
 	enc.SetIndent("", "  ")
 	return enc.Encode(report)
+}
+
+// scanFuncFor returns the scan function the scanning subcommands use. When no
+// SEP-0042 list is configured it returns the injected dependency, so dispatch
+// tests never touch the network; when lists are named it wires a production
+// scanner configured to consult them.
+func scanFuncFor(lists []string, d commandDeps) func(context.Context, mechanics.Asset) (*mechanics.Report, error) {
+	if len(lists) == 0 {
+		return d.scan
+	}
+	return newScanner(lists).Scan
 }
 
 // assetListFlags registers the -asset-lists flag shared by every command that
@@ -256,7 +267,7 @@ func runAttestation(args []string, d commandDeps) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	report, err := d.scan(ctx, asset, assetLists())
+	report, err := scanFuncFor(assetLists(), d)(ctx, asset)
 	if err != nil {
 		return err
 	}
@@ -301,7 +312,7 @@ func runHistory(args []string, d commandDeps) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	report, err := d.scan(ctx, asset, assetLists())
+	report, err := scanFuncFor(assetLists(), d)(ctx, asset)
 	if err != nil {
 		return err
 	}
@@ -310,9 +321,7 @@ func runHistory(args []string, d commandDeps) error {
 
 	if len(hist) == 0 {
 		msg := "assay history: no observations for " + asset.String()
-		if _, err := fmt.Fprintln(d.stdout, msg); err != nil {
-			return err
-		}
+		_, _ = fmt.Fprintln(d.stdout, msg)
 		if *guarantee {
 			return fmt.Errorf("no history")
 		}
@@ -321,9 +330,7 @@ func runHistory(args []string, d commandDeps) error {
 
 	if *raw {
 		for _, h := range hist {
-			if _, err := fmt.Fprintf(d.stdout, "%s\t%s\t%s\t%s\n", h.Asset, h.Severity, h.Transition, h.Reason); err != nil {
-				return err
-			}
+			_, _ = fmt.Fprintf(d.stdout, "%s\t%s\t%s\t%s\n", h.Asset, h.Severity, h.Transition, h.Reason)
 		}
 		return nil
 	}
@@ -403,10 +410,10 @@ func runServe(args []string, log *slog.Logger) error {
 		return err
 	}
 
-	srv := api.NewServer(log)
 	// The server is where a list configuration matters most: every scan it
 	// serves consults the same configured lists, attributed the same way, and
 	// records them in the observation history like any other evidence.
+	srv := api.NewServer(log)
 	srv.Scanner = newScanner(assetLists())
 	if *historyPath != "" {
 		store, err := historystore.Open(*historyPath)

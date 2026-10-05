@@ -94,10 +94,10 @@ func TestV3HashesDifferFromV2(t *testing.T) {
 		t.Fatal("v2 and v3 hashes are equal; the scanner identity commits nothing")
 	}
 	if !strings.Contains(v2Params.Preimage, "assay-evidence-v2\n") {
-		t.Fatalf("unbound report not written under v2: %q", scannerFirstLine(v2Params.Preimage))
+		t.Fatalf("unbound report not written under v2: %q", firstLine(v2Params.Preimage))
 	}
 	if !strings.Contains(v3Params.Preimage, "assay-evidence-v3\n") {
-		t.Fatalf("bound report not written under v3: %q", scannerFirstLine(v3Params.Preimage))
+		t.Fatalf("bound report not written under v3: %q", firstLine(v3Params.Preimage))
 	}
 }
 
@@ -125,22 +125,25 @@ func TestScannerIdentityChangeMovesTheHash(t *testing.T) {
 // thing byte-for-byte; this asserts the gating logic itself.
 func TestV1AndV2BytesAreUnchangedByScannerBinding(t *testing.T) {
 	pre1 := attest.Preimage(report(nil))
-	if strings.Contains(pre1, "scanner\t") || !strings.HasPrefix(pre1, attest.PreimageVersion+"\n") {
-		t.Fatalf("v2 report altered by the scanner encoding: %q", scannerFirstLine(pre1))
+	if strings.Contains(pre1, "scanner\t") || !strings.HasPrefix(pre1, "assay-evidence-v1\n") {
+		t.Fatalf("v1 report altered by the scanner encoding: %q", firstLine(pre1))
 	}
 
 	v2Rep := report(func(r *mechanics.Report) {
 		r.CheckSet = []string{"capability", "domain", "mutability", "reputation"}
 	})
 	pre2 := attest.Preimage(v2Rep)
-	if strings.Contains(pre2, "scanner\t") || !strings.HasPrefix(pre2, attest.PreimageVersionCheckSet+"\n") {
-		t.Fatalf("v2 report altered by the scanner encoding: %q", scannerFirstLine(pre2))
+	if strings.Contains(pre2, "scanner\t") || !strings.HasPrefix(pre2, "assay-evidence-v2\n") {
+		t.Fatalf("v2 report altered by the scanner encoding: %q", firstLine(pre2))
 	}
 }
 
-// TestV3HashMatchesPreimage verifies the scanner-bound encoding hashes the
-// exact bytes it renders.
-func TestV3HashMatchesPreimage(t *testing.T) {
+// TestV3VectorIsCommitted writes the v3 vector fixture if it is absent and
+// then verifies it like every other vector: the committed bytes hash to the
+// committed digest, and the implementation derives exactly those bytes. The
+// fixture is committed with this change; the write is only a fallback so the
+// test fails loudly rather than silently if the fixture is lost.
+func TestV3VectorIsCommitted(t *testing.T) {
 	rep := scannerBoundReport(func(r *mechanics.Report) {
 		r.Evidence = []mechanics.Evidence{
 			{
@@ -176,11 +179,4 @@ func hashOf(t *testing.T, rep *mechanics.Report) string {
 		t.Fatalf("FromReport: %v", err)
 	}
 	return params.EvidenceHash
-}
-
-func scannerFirstLine(s string) string {
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return s[:i]
-	}
-	return s
 }

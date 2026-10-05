@@ -34,91 +34,26 @@ func loadSubject(t *testing.T, dir string) *mechanics.Subject {
 // The labels live in eval.Corpus so the aggregate and per-check evals cannot
 // describe different runs. See docs/eval.md for the labelling rationale.
 func TestEval(t *testing.T) {
-	cases := []struct {
-		dir string
-		// why states what this subject is supposed to prove.
-		why string
-
-		wantBase      mechanics.Severity
-		wantSeverity  mechanics.Severity
-		wantEscalated bool
-		wantAccount   mechanics.Accountability
-	}{
-		{
-			dir:          "aqua-clear-verified",
-			why:          "no auth flags at all: the issuer has no power over holders, and a reciprocal domain confirms who it is",
-			wantBase:     mechanics.Clear,
-			wantSeverity: mechanics.Clear,
-			wantAccount:  mechanics.AccountabilityVerified,
-		},
-		{
-			dir:          "shx-clear-flagslocked",
-			why:          "no auth flags AND auth_immutable: the issuer can never add freeze or clawback later",
-			wantBase:     mechanics.Clear,
-			wantSeverity: mechanics.Clear,
-			wantAccount:  mechanics.AccountabilityVerified,
-		},
-		{
-			dir: "xrp-clear-unlocked",
-			why: "the unlocked counterpart to SHX: no auth flags, but auth_immutable is UNSET, so the " +
-				"issuer may add freeze or clawback later. The mutability finding must report that " +
-				"without moving base severity off clear.",
-			wantBase:     mechanics.Clear,
-			wantSeverity: mechanics.Clear,
-			wantAccount:  mechanics.AccountabilityVerified,
-		},
-		{
-			dir: "usdc-revocable-regulated",
-			why: "a real regulated stablecoin that legitimately uses auth_revocable. It must report " +
-				"freeze-capable (medium) on the strength of the flag alone: not discounted to clear " +
-				"because Circle issues it, and not escalated because nothing flags it.",
-			wantBase:     mechanics.Medium,
-			wantSeverity: mechanics.Medium,
-			// circle.com does not serve a stellar.toml, so the reciprocal claim
-			// genuinely fails. Reported honestly rather than special-cased.
-			wantAccount: mechanics.AccountabilityUnverified,
-		},
-		{
-			dir: "berkshire-clawback-scam",
-			why: "impersonation asset with clawback: capability alone puts it at high, and the curated " +
-				"malicious tag escalates it to critical",
-			wantBase:      mechanics.High,
-			wantSeverity:  mechanics.Critical,
-			wantEscalated: true,
-			wantAccount:   mechanics.AccountabilityUnverified,
-		},
-		{
-			dir: "doge-noflags-scam",
-			why: "the case that justifies keeping reputation as a separate upward-only axis: a known " +
-				"scam asset carrying NO auth flags. Capability is honestly clear, and escalation is " +
-				"the only thing that catches it.",
-			wantBase:      mechanics.Clear,
-			wantSeverity:  mechanics.Critical,
-			wantEscalated: true,
-			wantAccount:   mechanics.AccountabilityUnverified,
-		},
-	}
-
 	eng := mechanics.NewEngine()
-	for _, tc := range cases {
-		t.Run(tc.dir, func(t *testing.T) {
-			rep, err := eng.Run(context.Background(), loadSubject(t, tc.dir))
+	for _, tc := range eval.Corpus() {
+		t.Run(tc.Dir, func(t *testing.T) {
+			rep, err := eng.Run(context.Background(), loadSubject(t, tc.Dir))
 			if err != nil {
 				t.Fatalf("run: %v", err)
 			}
-			if rep.Base != tc.wantBase {
+			if rep.Base != tc.Base {
 				t.Errorf("base severity = %v, want %v\nwhy this case exists: %s",
-					rep.Base, tc.wantBase, tc.why)
+					rep.Base, tc.Base, tc.Why)
 			}
-			if rep.Severity != tc.wantSeverity {
+			if rep.Severity != tc.Severity {
 				t.Errorf("severity = %v, want %v\nwhy this case exists: %s",
-					rep.Severity, tc.wantSeverity, tc.why)
+					rep.Severity, tc.Severity, tc.Why)
 			}
-			if rep.Escalated != tc.wantEscalated {
-				t.Errorf("escalated = %v, want %v", rep.Escalated, tc.wantEscalated)
+			if rep.Escalated != tc.Escalated {
+				t.Errorf("escalated = %v, want %v", rep.Escalated, tc.Escalated)
 			}
-			if rep.Accountability != tc.wantAccount {
-				t.Errorf("accountability = %v, want %v", rep.Accountability, tc.wantAccount)
+			if rep.Accountability != tc.Accountability {
+				t.Errorf("accountability = %v, want %v", rep.Accountability, tc.Accountability)
 			}
 		})
 	}

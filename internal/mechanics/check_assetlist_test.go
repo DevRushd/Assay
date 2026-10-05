@@ -221,9 +221,9 @@ func TestAssetListsAreAttributedSeparately(t *testing.T) {
 		t.Errorf("the absence claim does not state what Beta said: %q", beta.Claim)
 	}
 	// Each claim carries its own source's fetch time, never a scan-wide one.
-	if !alpha.RetrievedAt.Equal(salTime) || !beta.RetrievedAt.Equal(salTime) {
+	if !alpha.RetrievedAt.Time().Equal(salTime) || !beta.RetrievedAt.Time().Equal(salTime) {
 		t.Errorf("claims carry %s and %s, want the list fetch time %s",
-			alpha.RetrievedAt, beta.RetrievedAt, salTime)
+			alpha.RetrievedAt.Time(), beta.RetrievedAt.Time(), salTime)
 	}
 }
 
@@ -346,7 +346,7 @@ func TestUnreadableAssetListIsFailureNotAbsence(t *testing.T) {
 	if !ev[0].Attempted {
 		t.Error("failure evidence is not marked Attempted: an attempt is not an answer")
 	}
-	if !ev[0].RetrievedAt.Equal(salTime) {
+	if !ev[0].RetrievedAt.Time().Equal(salTime) {
 		t.Errorf("failure evidence carries %s, want the attempt time %s", ev[0].RetrievedAt, salTime)
 	}
 

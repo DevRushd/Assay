@@ -28,7 +28,7 @@ type Scanner interface {
 
 // Server serves scan results and recorded observation history.
 type Server struct {
-	Scanner Scanner
+	Scanner *scan.Scanner
 	// History stores one observation per successful scan. It is a pointer so a
 	// caller can replace the default in-memory store with a file-backed one
 	// (history.Open) or with a pre-seeded store in a test.

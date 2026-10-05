@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"sync"
 	"time"
-
-	"github.com/use-assay/assay/internal/scan"
 )
 
 // Everything in this file answers one question — "can Assay do its job right
@@ -104,19 +102,19 @@ type upstream struct {
 // evidence a report carries.
 func probeEndpoints(s *Server) []upstream {
 	var ups []upstream
-	if scanner, ok := s.Scanner.(*scan.Scanner); ok {
-		if scanner.Horizon != nil {
+	if s.Scanner != nil {
+		if s.Scanner.Horizon != nil {
 			ups = append(ups, upstream{
 				Name:     "horizon",
 				Kind:     kindHorizon,
-				ProbeURL: scanner.Horizon.BaseURL,
+				ProbeURL: s.Scanner.Horizon.BaseURL,
 			})
 		}
-		if scanner.Expert != nil {
+		if s.Scanner.Expert != nil {
 			ups = append(ups, upstream{
 				Name:     "stellar.expert/directory",
 				Kind:     kindConsumed,
-				ProbeURL: scanner.Expert.BaseURL,
+				ProbeURL: s.Scanner.Expert.BaseURL,
 			})
 		}
 	}

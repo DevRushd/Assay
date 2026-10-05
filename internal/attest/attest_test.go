@@ -64,7 +64,6 @@ func TestPreimageMatchesTheDocumentedEncoding(t *testing.T) {
 	escaped = strings.ReplaceAll(escaped, cr, bs+"r")
 
 	rep := report(nil)
-	rep.CheckSet = []string{"capability", "mutability", "reputation", "sep1-domain"}
 	rep.Evidence = []mechanics.Evidence{
 		{
 			Source: "stellar.expert/directory",
@@ -85,14 +84,14 @@ func TestPreimageMatchesTheDocumentedEncoding(t *testing.T) {
 
 	// Assembled from the format table in docs/contract-interface.md.
 	want := strings.Join([]string{
-		"assay-evidence-v2",
+		"assay-evidence-v1",
 		"asset\t" + rep.Asset.String(),
 		"severity\t0",
 		"base_severity\t0",
 		"escalated\tfalse",
 		"mechanics\t0",
 		"accountability\tverified",
-		"checks\tcapability,mutability,reputation,sep1-domain",
+		"checks\t",
 		// Evidence lines sorted bytewise: horizon before stellar.expert.
 		"evidence\thorizon\thttps://horizon.stellar.org/assets?asset_code=AQUA\t" + escaped,
 		"evidence\tstellar.expert/directory\thttps://api.stellar.expert/explorer/directory/" + rep.Asset.Issuer + "\t" + `listed as "AQUA Issuer" on aqua.network`,
@@ -287,10 +286,10 @@ func TestSeparatorsInClaimsCannotForgeALine(t *testing.T) {
 	if strings.Contains(crafted.Preimage, "\nevidence\thorizon\thttps://evil") {
 		t.Fatalf("a claim injected a forged evidence line:\n%s", crafted.Preimage)
 	}
-	// Version, six unbound header fields, one evidence line: the crafted claim must not
+	// Version, seven header fields, one evidence line: the crafted claim must not
 	// have bought itself an extra record.
-	if lines := strings.Count(crafted.Preimage, "\n"); lines != 8 {
-		t.Fatalf("expected 8 preimage lines, got %d:\n%s", lines, crafted.Preimage)
+	if lines := strings.Count(crafted.Preimage, "\n"); lines != 9 {
+		t.Fatalf("expected 9 preimage lines, got %d:\n%s", lines, crafted.Preimage)
 	}
 }
 

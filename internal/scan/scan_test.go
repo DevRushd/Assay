@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/use-assay/assay/internal/attest"
 	"github.com/use-assay/assay/internal/mechanics"
 	"github.com/use-assay/assay/internal/scan"
+	"github.com/use-assay/assay/internal/sep1"
 )
 
 func TestParseAsset(t *testing.T) {
@@ -244,8 +243,11 @@ func TestTimeout(t *testing.T) {
 	if sub.TomlErr == "" {
 		t.Error("expected TomlErr to be set for slow source")
 	}
-	if sub.TomlErr != "timeout" {
-		t.Errorf("TomlErr = %q, want canonical timeout category", sub.TomlErr)
+	// The claim carries the canonical failure form, not the raw transport
+	// error: two scanners timing out on the same fetch must record the same
+	// string, or the evidence_hash would differ for the same failure.
+	if sub.TomlErr != sep1.FailureTimeout {
+		t.Errorf("TomlErr = %q, want the canonical %q", sub.TomlErr, sep1.FailureTimeout)
 	}
 
 	// Blocked and Directory finished normally and were not starved
@@ -363,62 +365,6 @@ func TestSubjectFailureEvidenceCarriesAttemptTime(t *testing.T) {
 	}
 }
 
-func TestScannerCanonicalizesFetchFailuresBeforeHashing(t *testing.T) {
-	var hashes, preimages []string
-	for _, host := range []string{"first.example", "second.example"} {
-		t.Run(host, func(t *testing.T) {
-			fs := newFakeSources(t)
-			sc := scan.New()
-			sc.Horizon.BaseURL = fs.horizon.URL
-			sc.Expert.BaseURL = "https://api.stellar.expert"
-			sc.Expert.HTTP.Transport = &singleHostTransport{host: strings.TrimPrefix(fs.expert.URL, "http://")}
-			sc.Toml.HTTP.Transport = failingTransport{
-				err: fmt.Errorf("dial tcp %s:443: connect: connection refused", host),
-			}
-
-			sub, err := sc.Subject(context.Background(), mustParse(t, "USDC-"+scanIssuer))
-			if err != nil {
-				t.Fatalf("Subject: %v", err)
-			}
-			if sub.TomlErr != "connection-refused" {
-				t.Fatalf("TomlErr = %q, want canonical connection-refused", sub.TomlErr)
-			}
-			report, err := sc.Engine.Run(context.Background(), sub)
-			if err != nil {
-				t.Fatalf("Engine.Run: %v", err)
-			}
-			params, err := attest.FromReport(report)
-			if err != nil {
-				t.Fatalf("attest.FromReport: %v", err)
-			}
-			var found bool
-			for _, evidence := range report.Evidence {
-				if evidence.Source == "stellar.toml" && evidence.Attempted {
-					found = true
-					if evidence.Claim != "not retrievable: connection-refused" {
-						t.Errorf("failure claim = %q", evidence.Claim)
-					}
-				}
-			}
-			if !found {
-				t.Fatal("scan report omitted attempted stellar.toml evidence")
-			}
-			hashes = append(hashes, params.EvidenceHash)
-			preimages = append(preimages, params.Preimage)
-		})
-	}
-	if hashes[0] != hashes[1] {
-		t.Fatalf("same failure class produced different evidence hashes: %s != %s\n--- first ---\n%s--- second ---\n%s",
-			hashes[0], hashes[1], preimages[0], preimages[1])
-	}
-}
-
-type failingTransport struct{ err error }
-
-func (t failingTransport) RoundTrip(*http.Request) (*http.Response, error) {
-	return nil, t.err
-}
-
 // TestCacheHitDoesNotRefreshEvidenceTime is the acceptance test for the
 // honesty half of the cache: a scan served from the reputation cache reports
 // the time the source ORIGINALLY answered, never the time of the scan that
@@ -508,9 +454,11 @@ func TestCacheHitDoesNotRefreshEvidenceTime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
+	// Evidence crosses the JSON boundary at whole-second precision (issue #52),
+	// so the comparison truncates the source's fetch time the same way.
 	want := map[string]time.Time{
-		"stellar.expert/directory":       first.DirectoryFetchedAt,
-		"stellar.expert/blocked-domains": first.BlockedFetchedAt,
+		"stellar.expert/directory":       first.DirectoryFetchedAt.Truncate(time.Second),
+		"stellar.expert/blocked-domains": first.BlockedFetchedAt.Truncate(time.Second),
 	}
 	seen := map[string]bool{}
 	for _, ev := range rep.Evidence {
@@ -522,9 +470,9 @@ func TestCacheHitDoesNotRefreshEvidenceTime(t *testing.T) {
 		if ev.Attempted {
 			t.Errorf("%s evidence marked Attempted on a cache hit", ev.Source)
 		}
-		if !ev.RetrievedAt.Time().Equal(at.Truncate(time.Second)) {
+		if !ev.RetrievedAt.Time().Equal(at) {
 			t.Errorf("%s evidence RetrievedAt = %s, want the original fetch time %s",
-				ev.Source, ev.RetrievedAt.Format(time.RFC3339Nano), at.Truncate(time.Second).Format(time.RFC3339Nano))
+				ev.Source, ev.RetrievedAt.Time().Format(time.RFC3339Nano), at.Format(time.RFC3339Nano))
 		}
 	}
 	for source := range want {

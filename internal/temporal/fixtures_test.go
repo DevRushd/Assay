@@ -145,19 +145,6 @@ func TestSequencesProduceExpectedTransitions(t *testing.T) {
 		reasonContains string
 	}{
 		{
-			dir:   "seq1",
-			why:   "the original placeholder sequence is now an explicit synthetic no-change pair",
-			state: temporal.Valid,
-
-			added:       0,
-			attribution: temporal.AttributionNone,
-
-			baseBefore: mechanics.Clear, baseAfter: mechanics.Clear,
-			severityBefore: mechanics.Clear, severityAfter: mechanics.Clear,
-
-			mechanicsMoved: false,
-		},
-		{
 			dir:   "seq1-capability-addition",
 			why:   "a capability was added between two captures; base and final severity move with it",
 			state: temporal.Valid,

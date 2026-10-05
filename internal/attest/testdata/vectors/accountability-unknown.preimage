@@ -5,4 +5,5 @@ base_severity	0
 escalated	false
 mechanics	16
 accountability	unknown
+checks	
 evidence	stellar.expert/blocked-domains	https://api.stellar.expert/explorer/directory/blocked-domains/velo.org	domain "velo.org" blocked=false

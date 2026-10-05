@@ -190,10 +190,13 @@ func Corpus() []Label {
 				"capability": {Severity: mechanics.Clear},
 				"mutability": {Severity: mechanics.Clear},
 				// No domain was ever advertised, so the finding is unknown, not
-				// a failed verification — and still carries the unverified bit,
+				// a failed verification - and still carries the unverified bit,
 				// because no identity was published to verify against.
 				"sep1-domain": {Severity: mechanics.Clear, Mechanics: mechanics.MechDomainUnverified},
-				"reputation":  {Severity: mechanics.Clear, Escalation: true, Undetermined: true},
+				// With no home_domain there is no domain to key the blocklist
+				// on, so the reputation question cannot be put at all: the
+				// finding is undetermined, never a clean result.
+				"reputation": {Undetermined: true},
 			},
 		},
 	}

@@ -85,15 +85,32 @@ policy above — report it privately first.
 
 Pre-1.0. Only `main` is supported; there are no maintained release branches.
 
-## The contract is not deployed
+## What is deployed
 
-`assay-contracts` has no testnet or pubnet deployment, so there is nothing live
-to attack. Please still report design flaws in the ABI or the gate logic — the
-value of finding them is highest before anything depends on them.
+The `assay-contracts` registry and the example gate **are deployed, on Stellar
+testnet**. There is no pubnet deployment. This is a live target: report against
+what is running, not against what you assume is running.
+
+[docs/deployment.md](docs/deployment.md) is the source of truth for addresses,
+wasm hashes and deployment transactions. It is linked rather than copied here
+so there is one place to correct when the deployment changes.
+
+Two things about that deployment are security-relevant:
+
+- **One gate instance is superseded and known-flawed.** `CANO57JR…` masks
+  capability bits only, so it admits assets whose severity comes from
+  reputation — the [#26](https://github.com/use-assay/Assay/issues/26) failure.
+  It cannot be removed, because Soroban contracts cannot be deleted, so it is
+  still live. `CAL5VYSW…` is the canonical instance. A gate pointing at
+  `CANO57JR…` is an unfixed #26 and is in scope as one.
+- **`evidence_hash` is independently verifiable.** The encoding is specified
+  in [docs/contract-interface.md](docs/contract-interface.md#evidence_hash-commits-to-the-claims-not-to-the-clock)
+  and was verified byte-for-byte against that procedure on 2026-09-17;
+  [docs/verifying.md](docs/verifying.md) walks the check.
 
 Known limitations, documented rather than hidden, in
-[docs/contract-interface.md](docs/contract-interface.md#not-done-yet):
-a single admin key can write any attestation, and `evidence_hash` has no
-canonical encoding yet, so it cannot currently be verified independently.
+[docs/contract-interface.md](docs/contract-interface.md#not-done-yet): a single
+admin key can write any attestation, and nothing refreshes an attestation when
+an issuer's flags change.
 The full list, with the direction each one fails in, is
 [docs/threat-model.md](docs/threat-model.md).

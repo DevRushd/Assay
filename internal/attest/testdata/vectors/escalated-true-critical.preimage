@@ -5,5 +5,6 @@ base_severity	0
 escalated	true
 mechanics	48
 accountability	unverified
+checks	
 evidence	horizon	https://horizon.stellar.org/assets?asset_code=DOGE&asset_issuer=GA22IDJNHUMC3XKUCCBFNTQIJOUBWINC5GCXHLJ2V6KZ3OWAXCULNQ7P	issuer flags: auth_required=false auth_revocable=false auth_immutable=false auth_clawback_enabled=false
 evidence	stellar.expert/directory	https://api.stellar.expert/explorer/directory/GA22IDJNHUMC3XKUCCBFNTQIJOUBWINC5GCXHLJ2V6KZ3OWAXCULNQ7P	listed as "DOGE Scam" (domain "nasdaq.finance", tags: malicious, unsafe)

@@ -43,7 +43,7 @@ func deps(rep *mechanics.Report, scanErr error) (commandDeps, *bytes.Buffer, *by
 	return commandDeps{
 		stdout: out,
 		stderr: errOut,
-		scan: func(context.Context, mechanics.Asset, []string) (*mechanics.Report, error) {
+		scan: func(context.Context, mechanics.Asset) (*mechanics.Report, error) {
 			return rep, scanErr
 		},
 		serve: func(args []string, _ *slog.Logger) error {

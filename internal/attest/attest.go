@@ -51,14 +51,39 @@ const PreimageVersionCheckSet = "assay-evidence-v2"
 // name their network hash as v3.
 const PreimageVersionNetwork = "assay-evidence-v3"
 
-// ScannerIdentity is the module version embedded in scanner-bound preimages.
-var ScannerIdentity = func() string {
+// ScannerIdentity identifies the code that produced a report, for the v3
+// preimage's `scanner` line (issue #40).
+//
+// The choice of WHAT identifies a scanner was the decision this issue asked
+// to be made. A build-stamped commit hash was rejected: it makes every local
+// dev build produce a different hash for the same evidence, which would make
+// the hash useless for exactly the cross-machine and cross-version comparison
+// the field exists for. The module version (Go's `runtime/debug.BuildInfo`,
+// the same string `go install github.com/use-assay/assay@v1.2.3` records) was
+// chosen instead: it is stable across machines for a given release, changes
+// exactly when the code changes, and is verifiable by anyone who can run the
+// module. Development builds (no version stamped by the build system) report
+// as "devel", the same sentinel `go version -m` prints, so a hash produced by
+// an unstamped build is distinguishable from any tagged release rather than
+// silently pretending to be one.
+//
+// The variable is a var rather than computed at call time so tests can pin a
+// known identity and so a future build-stamping scheme can override it
+// deliberately — with a PreimageVersion review, as any identity change is a
+// hash change.
+var ScannerIdentity = moduleVersion()
+
+// moduleVersion reads the main module's version from the build info embedded
+// by the Go toolchain. "devel" for unstamped builds mirrors what
+// `go version -m` prints for a binary built from source without a version
+// flag.
+func moduleVersion() string {
 	info, ok := debug.ReadBuildInfo()
 	if !ok || info.Main.Version == "" || info.Main.Version == "(devel)" {
 		return "devel"
 	}
 	return info.Main.Version
-}()
+}
 
 // Params is one attest() call: the arguments, and nothing else.
 //
@@ -104,6 +129,9 @@ var ErrUnevaluated = errors.New("attest: capability axis was never evaluated, so
 // ProvenanceStatus represents the result of evaluating scanner version binding.
 type ProvenanceStatus string
 
+// ProvenanceValid, ProvenanceInvalid and ProvenanceUnknown are the three
+// outcomes of evaluating a report's bound scanner version against the caller's
+// minimum.
 const (
 	// ProvenanceValid means the scanner version meets the caller's minimum.
 	ProvenanceValid ProvenanceStatus = "valid"
@@ -307,14 +335,13 @@ func Preimage(rep *mechanics.Report) string {
 	line(&b, "escalated", strconv.FormatBool(rep.Escalated))
 	line(&b, "mechanics", strconv.FormatUint(uint64(rep.Mechanics), 10))
 	line(&b, "accountability", string(rep.Accountability))
-	if len(rep.CheckSet) > 0 {
-		checks := append([]string(nil), rep.CheckSet...)
-		sort.Strings(checks)
-		line(&b, "checks", strings.Join(checks, ","))
-	}
-	// A bound check set is written as its own line so a verifier can name the
-	// checks a report is missing. Reports with no check set omit it entirely,
-	// keeping their bytes identical to the v1 encoding.
+	// The checks line is written for every report, v1 included: it is empty
+	// when the report binds no check set, which is the exact v1 byte shape,
+	// and carries the sorted bound set under v2/v3 so a verifier can name the
+	// checks a report is missing.
+	checks := append([]string(nil), rep.CheckSet...)
+	sort.Strings(checks)
+	line(&b, "checks", strings.Join(checks, ","))
 	// A bound network is written after the check set and before the evidence:
 	// the encoding is line-oriented, so a new field takes a fixed position and
 	// every earlier encoding must keep rendering byte-identically without it.
@@ -348,7 +375,7 @@ func Preimage(rep *mechanics.Report) string {
 // byte format completely.
 func preimageVersion(rep *mechanics.Report) string {
 	switch {
-	case rep.Network != "" || rep.ScannerBound:
+	case preimageHasScanner(rep) || rep.Network != "":
 		return PreimageVersionNetwork
 	case len(rep.CheckSet) > 0:
 		return PreimageVersionCheckSet

@@ -4,22 +4,15 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
 func main() {
-	files, err := filepath.Glob("internal/attest/testdata/vectors/*.preimage")
-	if err != nil {
-		log.Fatal(err)
-	}
+	files, _ := filepath.Glob("internal/attest/testdata/vectors/*.preimage")
 	for _, f := range files {
-		content, err := os.ReadFile(f)
-		if err != nil {
-			log.Fatal(err)
-		}
+		content, _ := os.ReadFile(f)
 		lines := strings.Split(string(content), "\n")
 		var newLines []string
 		for _, line := range lines {
@@ -34,14 +27,10 @@ func main() {
 		// if no evidence and ends with newline, the last was empty string
 		res := strings.Join(newLines, "\n")
 		res = strings.ReplaceAll(res, "checks\t\n\n", "checks\t\n")
-		if err := os.WriteFile(f, []byte(res), 0o644); err != nil {
-			log.Fatal(err)
-		}
+		_ = os.WriteFile(f, []byte(res), 0644)
 		sum := sha256.Sum256([]byte(res))
 		digest := hex.EncodeToString(sum[:])
-		if err := os.WriteFile(strings.TrimSuffix(f, ".preimage")+".digest", []byte(digest+"\n"), 0o644); err != nil {
-			log.Fatal(err)
-		}
+		_ = os.WriteFile(strings.TrimSuffix(f, ".preimage")+".digest", []byte(digest+"\n"), 0644)
 		fmt.Println("Updated", f, digest)
 	}
 }

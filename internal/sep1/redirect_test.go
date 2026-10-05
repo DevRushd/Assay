@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"testing"
 
@@ -26,34 +25,19 @@ const redirectToml = "[[CURRENCIES]]\ncode = \"USDC\"\nissuer = \"" + issuer + "
 // the one the scanner uses.
 func fetcherForServer(srv *httptest.Server) *sep1.Fetcher {
 	f := sep1.NewFetcher()
-	target, err := url.Parse(srv.URL)
-	if err != nil {
-		panic(err)
-	}
-	f.HTTP = &http.Client{
-		Transport:     redirectTestTransport{target: target, base: srv.Client().Transport},
-		CheckRedirect: sep1.CheckRedirect,
-	}
+	// The host policy refuses non-public hosts before any request, so the
+	// domain under test is a public name and the transport rewrites it to the
+	// test server, the same way the other fetcher tests do.
+	base := srv.Client()
+	f.HTTP = &http.Client{Transport: rewriteTo{base: base.Transport, host: domainOf(srv.URL)}}
+	f.HTTP.CheckRedirect = sep1.CheckRedirect
 	return f
 }
 
-type redirectTestTransport struct {
-	target *url.URL
-	base   http.RoundTripper
-}
-
-func (t redirectTestTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	mapped := req.Clone(req.Context())
-	u := *req.URL
-	u.Scheme = t.target.Scheme
-	u.Host = t.target.Host
-	mapped.URL = &u
-	resp, err := t.base.RoundTrip(mapped)
-	if resp != nil {
-		resp.Request = req
-	}
-	return resp, err
-}
+// redirectHost is the public host the redirect tests fetch. The transport
+// rewrites it to the httptest server, so ClassifyHost sees an allowed host
+// while the bytes still come from the test server.
+const redirectHost = "redirect.example"
 
 // TestRedirectWithinBound follows two same-site hops and expects the document
 // at the end. The final URL is the one recorded, so a reader can see where the
@@ -73,11 +57,11 @@ func TestRedirectWithinBound(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	doc, err := fetcherForServer(srv).Fetch(context.Background(), "circle.com")
+	doc, err := fetcherForServer(srv).Fetch(context.Background(), redirectHost)
 	if err != nil {
 		t.Fatalf("two same-site redirects within the bound: %v", err)
 	}
-	final := "https://circle.com/hop/2"
+	final := srv.URL + "/hop/2"
 	if doc.URL != final {
 		t.Errorf("doc.URL = %q, want the final location %q", doc.URL, final)
 	}
@@ -97,7 +81,7 @@ func TestRedirectExceedingBound(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	_, err := fetcherForServer(srv).Fetch(context.Background(), "circle.com")
+	_, err := fetcherForServer(srv).Fetch(context.Background(), redirectHost)
 	if err == nil {
 		t.Fatal("an unbounded redirect chain was followed to completion")
 	}
@@ -115,7 +99,7 @@ func TestRedirectCrossHostRefused(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	_, err := fetcherForServer(srv).Fetch(context.Background(), "circle.com")
+	_, err := fetcherForServer(srv).Fetch(context.Background(), redirectHost)
 	if err == nil {
 		t.Fatal("a cross-host redirect was followed and its document accepted as the domain's claim")
 	}

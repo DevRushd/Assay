@@ -54,6 +54,48 @@ const defaultUserAgent = "assay/" + version + " (+https://github.com/use-assay/A
 // can assert the bound rather than assume it.
 const MaxBody = 1 << 20 // 1 MiB
 
+// RetryOptions bounds exponential backoff with jitter for transient failures.
+// Retry-After takes precedence when the server advertises it.
+type RetryOptions struct {
+	Attempts        int
+	InitialDelay    time.Duration
+	MaxDelay        time.Duration
+	MaxTotalLatency time.Duration
+}
+
+// DefaultRetryOptions caps total added latency at ~2s, well inside the
+// outer 30s scan budget, and honours the Retry-After we actually observed on
+// api.stellar.expert.
+func DefaultRetryOptions() *RetryOptions {
+	return &RetryOptions{
+		Attempts:        3,
+		InitialDelay:    250 * time.Millisecond,
+		MaxDelay:        500 * time.Millisecond,
+		MaxTotalLatency: 2 * time.Second,
+	}
+}
+
+// Backoff returns the next delay after an attempt failed, with full jitter:
+// a uniform draw in [0, min(MaxDelay, InitialDelay * 2^attempt)].
+func (o *RetryOptions) Backoff(attempt int, retryAfter time.Duration) time.Duration {
+	target := o.InitialDelay * time.Duration(math.Pow(2, float64(attempt)))
+	if target > o.MaxDelay {
+		target = o.MaxDelay
+	}
+	if retryAfter > 0 && retryAfter < target {
+		target = retryAfter
+	}
+	if target <= 0 {
+		target = o.InitialDelay
+	}
+	n := rand.Int63()
+	if n < 0 {
+		n = -n
+	}
+	target = time.Duration(n % int64(target))
+	return target
+}
+
 // AdvertisedMaxAge is the freshness budget StellarExpert publishes for the
 // endpoints Assay consumes.
 //
@@ -90,30 +132,6 @@ const DefaultDirectoryTTL = AdvertisedMaxAge
 // neither exceeds the window StellarExpert advertises; a deployment that wants
 // a tighter blocklist window can set it lower, or to zero. See docs/caching.md.
 const DefaultBlocklistTTL = AdvertisedMaxAge
-
-// RetryOptions bounds retries for transient StellarExpert failures.
-type RetryOptions struct {
-	Attempts int
-	Backoff  func(attempt int, retryAfter time.Duration) time.Duration
-}
-
-// DefaultRetryOptions returns a bounded exponential backoff with jitter.
-func DefaultRetryOptions() RetryOptions {
-	return RetryOptions{
-		Attempts: 3,
-		Backoff: func(attempt int, retryAfter time.Duration) time.Duration {
-			delay := time.Duration(math.Pow(2, float64(attempt))) * 100 * time.Millisecond
-			if delay > 2*time.Second {
-				delay = 2 * time.Second
-			}
-			delay = delay/2 + time.Duration(rand.Int63n(int64(delay/2)+1))
-			if retryAfter > delay {
-				return retryAfter
-			}
-			return delay
-		},
-	}
-}
 
 // Options configures a Client, including its cache policy.
 type Options struct {

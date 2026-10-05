@@ -37,7 +37,14 @@ const version = "v0.1.0"
 // asked for more than this, rather than assuming it.
 const MaxBody = 1 << 20 // 1 MiB
 
-// MaxRedirects bounds redirects followed while retrieving a stellar.toml.
+// MaxRedirects bounds how many redirects the fetcher will follow before
+// giving up. It is set explicitly rather than inherited from net/http's default
+// of 10, because the number is part of the security argument: a redirect chain
+// is attacker-controlled, and an unbounded one lets a hostile home_domain keep
+// the scanner chasing hops (or keep rewriting the final URL the claim is
+// attributed to). Five is enough for the ordinary cases — an http-to-https
+// upgrade, a trailing-slash or path-normalization hop, an apex-to-www move —
+// and small enough to read in one place.
 const MaxRedirects = 5
 
 const (

@@ -135,6 +135,15 @@ func (c DomainCheck) Run(_ context.Context, s *Subject) (Finding, error) {
 			return c.resolveLinked(f, s, domain, s.TomlLinked), nil
 		}
 
+		// SEP-0001 lets a currency entry delegate to its own TOML file. When
+		// those links were followed, a match there is a claim like any other;
+		// when they could not all be read, the answer stays unresolved and must
+		// not be reported as a refusal. Overstating a negative is the same
+		// class of error as overstating a positive.
+		if res := s.TomlLinked; res != nil {
+			return c.resolveLinked(f, s, domain, res), nil
+		}
+
 		// SEP-0001 lets a currency entry delegate to its own TOML file, and
 		// does not require the link to be the entry's only field: an entry may
 		// carry a code and issuer next to the link. Assay does not follow those

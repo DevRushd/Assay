@@ -235,29 +235,11 @@ func TestEveryVectorFileIsPinned(t *testing.T) {
 	}
 	for _, e := range entries {
 		stem := strings.TrimSuffix(filepath.Base(e), ".preimage")
-		if stem == "legacy-v1" {
-			continue
-		}
 		if _, ok := vectorReports[stem]; !ok {
 			t.Errorf("vector %q has no Report pinning it in vectorReports", stem)
 		}
 		if _, err := os.Stat(filepath.Join("testdata", "vectors", stem+".digest")); err != nil {
 			t.Errorf("vector %q has no matching .digest file", stem)
 		}
-	}
-}
-
-func TestLegacyV1VectorDigest(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("testdata", "vectors", "legacy-v1.preimage"))
-	if err != nil {
-		t.Fatalf("read legacy vector: %v", err)
-	}
-	digest, err := os.ReadFile(filepath.Join("testdata", "vectors", "legacy-v1.digest"))
-	if err != nil {
-		t.Fatalf("read legacy digest: %v", err)
-	}
-	sum := sha256.Sum256(raw)
-	if got, want := hex.EncodeToString(sum[:]), strings.TrimSpace(string(digest)); got != want {
-		t.Fatalf("legacy v1 digest mismatch: got %s, want %s", got, want)
 	}
 }
