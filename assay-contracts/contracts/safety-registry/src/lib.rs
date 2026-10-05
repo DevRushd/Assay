@@ -245,7 +245,7 @@ pub enum Error {
     /// Rejected rather than truncated: silently dropping the tail would report
     /// success for assets that were never written, and the off-chain pipeline
     /// would move on believing they had been re-attested.
-    BatchTooLarge = 6,
+    BatchTooLarge = 7,
 }
 
 /// Extends the contract instance's TTL to the network maximum. Extending the
@@ -447,31 +447,8 @@ impl SafetyRegistry {
             severity,
             flags,
             evidence_hash,
-            attested_at,
-        };
-
-        // Read the previous value before overwriting
-        let previous = env
-            .storage()
-            .persistent()
-            .get::<DataKey, Safety>(&DataKey::Safety(asset.clone()));
-
-        // Write the new attestation
-        env.storage()
-            .persistent()
-            .set(&DataKey::Safety(asset.clone()), &safety);
-
-        // Extend TTL to maximum so the attestation persists until explicitly
-        // overwritten. Freshness is enforced by the caller via max_age_secs on
-        // is_safe, not by storage expiry.
-        env.storage().persistent().extend_ttl(
-            &DataKey::Safety(asset),
-            100,
-            env.storage().max_ttl(),
+            env.ledger().timestamp(),
         );
-        let key = DataKey::Safety(asset.clone());
-        env.storage().persistent().set(&key, &safety);
-        extend_attestation(&env, &key);
         extend_instance(&env);
         Ok(())
     }

@@ -30,7 +30,7 @@ func testReport() *mechanics.Report {
 		Findings:           []mechanics.Finding{},
 		Evidence:           []mechanics.Evidence{},
 		UndeterminedChecks: []string{},
-		ScannedAt:          time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC),
+		ScannedAt:          mechanics.NewCanonicalTime(time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)),
 	}
 }
 
@@ -225,7 +225,7 @@ func TestHistoryRawWithEvidence(t *testing.T) {
 			Source:      "stellar.expert/directory",
 			URL:         "https://api.stellar.expert/explorer/directory/" + cliIssuer,
 			Claim:       `listed as "Example" (domain "example.com", tags: )`,
-			RetrievedAt: time.Date(2026, 9, 27, 11, 0, 0, 0, time.UTC),
+			RetrievedAt: mechanics.NewCanonicalTime(time.Date(2026, 9, 27, 11, 0, 0, 0, time.UTC)),
 		},
 	}
 

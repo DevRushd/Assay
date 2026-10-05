@@ -28,7 +28,12 @@ fn setup() -> Fixture<'static> {
 
     let gate_id = env.register(
         ExampleGate,
-        (registry_id, DEFAULT_MAX_SEVERITY, DEFAULT_MAX_ATTESTATION_AGE, DEFAULT_REFUSED_MECHANICS),
+        (
+            registry_id,
+            DEFAULT_MAX_SEVERITY,
+            DEFAULT_MAX_ATTESTATION_AGE,
+            DEFAULT_REFUSED_MECHANICS,
+        ),
     );
     let gate = ExampleGateClient::new(&env, &gate_id);
 

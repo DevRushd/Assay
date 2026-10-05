@@ -15,13 +15,13 @@ import (
 
 // FindingResult is one check's output in a recorded run.
 type FindingResult struct {
-	Check        string   `json:"check"`
-	Severity     string   `json:"severity"`
-	Escalation   bool     `json:"escalation"`
-	Undetermined bool     `json:"undetermined"`
-	Mechanics    []string `json:"mechanics"`
+	Check                string         `json:"check"`
+	Severity             string         `json:"severity"`
+	Escalation           bool           `json:"escalation"`
+	Undetermined         bool           `json:"undetermined"`
+	Mechanics            []string       `json:"mechanics"`
 	UndeterminedBySource map[string]int `json:"undetermined_by_source,omitempty"`
-	UndeterminedRate string `json:"undetermined_rate,omitempty"`
+	UndeterminedRate     string         `json:"undetermined_rate,omitempty"`
 }
 
 // EvidenceResult is one attributed claim in a recorded run. Retrieval times are
@@ -35,22 +35,22 @@ type EvidenceResult struct {
 
 // SubjectResult is one subject's classification in a recorded run.
 type SubjectResult struct {
-	Dir                     string                   `json:"dir"`
-	Asset                   string                   `json:"asset"`
-	Severity                string                   `json:"severity"`
-	Base                    string                   `json:"base_severity"`
-	Escalated               bool                     `json:"escalated"`
-	Undetermined            bool                     `json:"undetermined"`
-	UndeterminedChecks      []string                 `json:"undetermined_checks,omitempty"`
-	UndeterminedBySource    map[string]int           `json:"undetermined_by_source,omitempty"`
-	UndeterminedRate        string                   `json:"undetermined_rate,omitempty"`
-	Mechanics               []string                 `json:"mechanics"`
-	Accountability          string                   `json:"accountability"`
-	CheckSet                []string                 `json:"checks,omitempty"`
-	Findings                []FindingResult          `json:"findings"`
-	Evidence                []EvidenceResult         `json:"evidence"`
-	ObservationWindowStart  time.Time                `json:"observation_window_start,omitempty"`
-	ObservationWindowEnd    time.Time                `json:"observation_window_end,omitempty"`
+	Dir                    string           `json:"dir"`
+	Asset                  string           `json:"asset"`
+	Severity               string           `json:"severity"`
+	Base                   string           `json:"base_severity"`
+	Escalated              bool             `json:"escalated"`
+	Undetermined           bool             `json:"undetermined"`
+	UndeterminedChecks     []string         `json:"undetermined_checks,omitempty"`
+	UndeterminedBySource   map[string]int   `json:"undetermined_by_source,omitempty"`
+	UndeterminedRate       string           `json:"undetermined_rate,omitempty"`
+	Mechanics              []string         `json:"mechanics"`
+	Accountability         string           `json:"accountability"`
+	CheckSet               []string         `json:"checks,omitempty"`
+	Findings               []FindingResult  `json:"findings"`
+	Evidence               []EvidenceResult `json:"evidence"`
+	ObservationWindowStart time.Time        `json:"observation_window_start,omitempty"`
+	ObservationWindowEnd   time.Time        `json:"observation_window_end,omitempty"`
 }
 
 // Record is the classifier output for the whole corpus under one version.
@@ -98,13 +98,13 @@ func recordSubject(dir string, rep *mechanics.Report) SubjectResult {
 	}
 	for _, f := range rep.Findings {
 		sr.Findings = append(sr.Findings, FindingResult{
-			Check:                    f.Check,
-			Severity:                 f.Severity.String(),
-			Escalation:               f.Escalation,
-			Undetermined:             f.Undetermined,
-			UndeterminedBySource:     f.UndeterminedBySource,
-			UndeterminedRate:         f.UndeterminedRate,
-			Mechanics:                append([]string(nil), f.MechanicNames...),
+			Check:                f.Check,
+			Severity:             f.Severity.String(),
+			Escalation:           f.Escalation,
+			Undetermined:         f.Undetermined,
+			UndeterminedBySource: f.UndeterminedBySource,
+			UndeterminedRate:     f.UndeterminedRate,
+			Mechanics:            append([]string(nil), f.MechanicNames...),
 		})
 	}
 	for _, e := range rep.Evidence {

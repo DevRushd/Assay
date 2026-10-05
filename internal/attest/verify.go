@@ -85,7 +85,7 @@ func NormalizeEvidenceHash(s string) (string, error) {
 			ErrMalformedHash, len(h), sha256.Size*2)
 	}
 	if _, err := hex.DecodeString(h); err != nil {
-		return "", fmt.Errorf("%w: %v", ErrMalformedHash, err)
+		return "", fmt.Errorf("%w: %w", ErrMalformedHash, err)
 	}
 	return h, nil
 }

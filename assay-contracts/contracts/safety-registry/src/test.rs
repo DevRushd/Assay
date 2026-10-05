@@ -363,6 +363,8 @@ fn archived_entry_auto_restored_and_readable() {
 
     // The entry now has a fresh TTL (live_until = 4096 + 4095 = 8191)
     // This is verified by the test snapshot.
+}
+
 // ---------------------------------------------------------------------------
 // Revocation (#86)
 // ---------------------------------------------------------------------------
@@ -483,6 +485,25 @@ fn revoke_rejects_unauthorized_caller() {
 
     let got = client.get_safety(&asset).expect("attestation should exist");
     assert_eq!(got.severity, SEVERITY_CLEAR);
+
+    let caller = Address::generate(&env);
+    let err = client
+        .mock_auths(&[MockAuth {
+            address: &caller,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "revoke",
+                args: (&asset,).into_val(&env),
+                sub_invokes: &[],
+            },
+        }])
+        .try_revoke(&asset)
+        .expect_err("non-admin must be rejected");
+
+    // As in attest_rejects_unauthorized_caller, the error is the host's auth
+    // error rather than a contract Error; what matters is that it is one.
+    assert!(err.is_err());
+    assert!(client.get_safety(&asset).is_some());
 }
 
 /// Property test: is_safe MUST return false for any unattested asset across all threshold/age arguments.
@@ -580,24 +601,9 @@ fn error_code_values_are_abi() {
     assert_eq!(Error::NotInitialized as u32, 2);
     assert_eq!(Error::InvalidSeverity as u32, 3);
     assert_eq!(Error::InconsistentAttestation as u32, 4);
-    let caller = Address::generate(&env);
-    let err = client
-        .mock_auths(&[MockAuth {
-            address: &caller,
-            invoke: &MockAuthInvoke {
-                contract: &contract_id,
-                fn_name: "revoke",
-                args: (&asset,).into_val(&env),
-                sub_invokes: &[],
-            },
-        }])
-        .try_revoke(&asset)
-        .expect_err("non-admin must be rejected");
-
-    // As in attest_rejects_unauthorized_caller, the error is the host's auth
-    // error rather than a contract Error; what matters is that it is one.
-    assert!(err.is_err());
-    assert!(client.get_safety(&asset).is_some());
+    assert_eq!(Error::NotAttested as u32, 5);
+    assert_eq!(Error::NoPendingAdmin as u32, 6);
+    assert_eq!(Error::BatchTooLarge as u32, 7);
 }
 
 /// A successful revoke emits one event with topics ("revoke", asset).

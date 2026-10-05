@@ -76,10 +76,22 @@ type Scanner struct {
 	Toml    *sep1.Fetcher
 	Expert  *stellarexpert.Client
 	Engine  *mechanics.Engine
-	Network horizon.Network
-	FetchTimeout time.Duration
 	// Lists fetches the configured SEP-0042 Stellar Asset Lists.
 	Lists *assetlist.Client
+
+	// FetchTimeout bounds any single source fetch. Zero means DefaultFetchTimeout.
+	FetchTimeout time.Duration
+
+	// Network is the Stellar network the scan claims to read, named by the
+	// full network passphrase. It is stamped onto every Subject and bound
+	// into the evidence preimage from v3 on.
+	//
+	// Subject assembly cross-checks the claim against the Horizon base URL
+	// and fails closed when they contradict or when neither can name the
+	// network: the same CODE-ISSUER can exist on two networks with different
+	// flags (#41), so a wrong or guessed network name is not a cosmetic
+	// mistake, it is a false attestation.
+	Network horizon.Network
 
 	// AssetListURLs are the curated lists consulted for every scan, in order.
 	//
@@ -91,26 +103,47 @@ type Scanner struct {
 	AssetListURLs []string
 }
 
-// Options configures scanner network identity and reputation caching.
+// Options configures a Scanner.
+//
+// The cache options exist because every scan consumes a free, third-party
+// service, and the cost of not re-reading it is staleness. Which way to trade
+// is a deployment's to make, not a constant's: a one-shot CLI scan can afford
+// to re-fetch everything, while a long-lived server answering repeated scans of
+// the same issuer should not rebuild them from scratch each time. The default
+// is the conservative one documented in docs/caching.md.
+//
+// Ledger lookups are deliberately NOT covered here. See NewWithOptions.
 type Options struct {
-	Network                horizon.Network
-	FetchTimeout           time.Duration
+	// ReputationDirectoryTTL and ReputationBlocklistTTL bound how long a
+	// curated StellarExpert answer may be reused, measured from the fetch that
+	// produced it. A zero TTL disables caching of that source.
 	ReputationDirectoryTTL time.Duration
 	ReputationBlocklistTTL time.Duration
-	NoReputationCache      bool
+
+	// NoReputationCache disables the reputation cache outright: every scan
+	// re-fetches both curated sources. Use it when a stale answer would be
+	// unacceptable and the extra requests are affordable.
+	NoReputationCache bool
 }
 
-// DefaultOptions returns the production network, timeout, and cache policy.
+// DefaultOptions returns the production cache policy.
 func DefaultOptions() Options {
 	return Options{
-		Network:                horizon.PublicNet,
-		FetchTimeout:           DefaultFetchTimeout,
 		ReputationDirectoryTTL: stellarexpert.DefaultDirectoryTTL,
 		ReputationBlocklistTTL: stellarexpert.DefaultBlocklistTTL,
 	}
 }
 
-// New returns a Scanner wired to the public production sources.
+// New returns a Scanner wired to the public production sources with the
+// default cache policy. The default Horizon endpoint is SDF pubnet, so the
+// scanner declares pubnet; a scan pointed elsewhere must set Network
+// explicitly or Subject fails rather than guessing.
+func New() *Scanner {
+	return NewWithOptions(DefaultOptions())
+}
+
+// NewWithOptions returns a Scanner wired to the public production sources with
+// the given cache policy.
 //
 // Two environment variables override the upstream endpoints, to let the
 // reproducibility job (and anyone debugging it) point a source at an
@@ -123,12 +156,6 @@ func DefaultOptions() Options {
 // Empty means the public default. Anything else is used verbatim, so
 // pointing one at http://127.0.0.1:1 makes that source fail and the scan
 // report undetermined (or fail, for Horizon) rather than succeed.
-func New() *Scanner {
-	return NewWithOptions(DefaultOptions())
-}
-
-// NewWithOptions returns a Scanner wired to the public production sources with
-// the given cache policy.
 //
 // Only the reputation lookups are cached. Horizon is left uncached on purpose:
 // issuer authorization flags are the capability axis severity is derived from,
@@ -138,20 +165,13 @@ func New() *Scanner {
 // long enough to save one would misstate the issuer's power. See
 // docs/caching.md.
 func NewWithOptions(opts Options) *Scanner {
-	if opts.Network == "" {
-		opts.Network = horizon.PublicNet
-	}
-	if opts.FetchTimeout <= 0 {
-		opts.FetchTimeout = DefaultFetchTimeout
-	}
 	return &Scanner{
-		Horizon:      horizon.New(os.Getenv("ASSAY_HORIZON_URL")),
-		Toml:         sep1.NewFetcher(),
-		Expert:       stellarexpert.NewWithOptions(os.Getenv("ASSAY_STELLAREXPERT_URL"), expertOptions(opts)),
-		Engine:       mechanics.NewEngine(),
-		Lists:        assetlist.New(),
-		Network:      opts.Network,
-		FetchTimeout: opts.FetchTimeout,
+		Horizon: horizon.New(os.Getenv("ASSAY_HORIZON_URL")),
+		Toml:    sep1.NewFetcher(),
+		Expert:  stellarexpert.NewWithOptions(os.Getenv("ASSAY_STELLAREXPERT_URL"), expertOptions(opts)),
+		Engine:  mechanics.NewEngine(),
+		Lists:   assetlist.New(),
+		Network: horizon.PublicNet,
 	}
 }
 
@@ -167,6 +187,29 @@ func expertOptions(opts Options) stellarexpert.Options {
 	return o
 }
 
+// resolveNetwork decides which network a scan is on.
+//
+// The declared network and the Horizon endpoint must agree, and every
+// combination that cannot name exactly one network is an error rather than a
+// default. A guessed network name would enter the evidence_hash, and the same
+// code+issuer can exist on two networks with different flags (#41).
+func (s *Scanner) resolveNetwork() (horizon.Network, error) {
+	derived, deriveErr := s.Horizon.Network()
+	switch {
+	case deriveErr == nil:
+		if s.Network != "" && s.Network != derived {
+			return "", fmt.Errorf("scan: network declared %q but Horizon at %s serves %q",
+				s.Network, s.Horizon.BaseURL, derived)
+		}
+		return derived, nil
+	case s.Network != "":
+		return s.Network, nil
+	default:
+		return "", fmt.Errorf("scan: %w; set Scanner.Network to the passphrase of the ledger Horizon at %s serves",
+			deriveErr, s.Horizon.BaseURL)
+	}
+}
+
 func (s *Scanner) fetchTimeout() time.Duration {
 	if s.FetchTimeout > 0 {
 		return s.FetchTimeout
@@ -174,26 +217,13 @@ func (s *Scanner) fetchTimeout() time.Duration {
 	return DefaultFetchTimeout
 }
 
-func (s *Scanner) resolveNetwork() (horizon.Network, error) {
-	served, err := s.Horizon.Network()
-	if err != nil {		if !errors.Is(err, horizon.ErrUnknownNetwork) || s.Network == "" {
-			return "", err
-		}
-		return s.Network, nil
-	}
-	if s.Network != "" && s.Network != served {
-		return "", fmt.Errorf("scan: declared network %q but Horizon serves %q", s.Network, served)
-	}
-	return served, nil
-}
-
 // Subject fetches everything the checks need for one asset.
 //
 // Only the ledger lookups are fatal: without issuer flags there is no
 // classification to make. Every consumed signal is best-effort, because a
 // third-party outage must not be able to turn a dangerous asset into an error
-// page. Fetch failures are recorded as stable categories so machine-specific
-// transport details cannot change evidence hashes.
+// page. When a source is unreachable the failure is recorded verbatim and
+// surfaced, never smoothed into a false negative.
 func (s *Scanner) Subject(ctx context.Context, a mechanics.Asset) (*mechanics.Subject, error) {
 	network, err := s.resolveNetwork()
 	if err != nil {
@@ -226,74 +256,130 @@ func (s *Scanner) Subject(ctx context.Context, a mechanics.Asset) (*mechanics.Su
 
 	var (
 		wg sync.WaitGroup
-		tomlDoc *sep1.Doc
-		tomlErr error
+
+		tomlDoc         *sep1.Doc
+		tomlErr         string
+		tomlRefused     bool
 		tomlAttemptedAt time.Time
-		blockedAnswer stellarexpert.Answer[stellarexpert.BlockedDomain]
-		blockedErr error
-		blockedAttemptedAt time.Time
-		directoryAnswer stellarexpert.Answer[stellarexpert.DirectoryEntry]
-		directoryErr error
-		directoryAttemptedAt time.Time
+		tomlURL         string
+
+		blockedVal       stellarexpert.Answer[stellarexpert.BlockedDomain]
+		blockedErr       string
+		blockedFetchedAt time.Time
+		blockedAttAt     time.Time
+		blockedURL       string
+
+		dirVal       stellarexpert.Answer[stellarexpert.DirectoryEntry]
+		dirErr       string
+		dirFetchedAt time.Time
+		dirAttAt     time.Time
+		dirURL       string
 	)
-	domain := issuer.HomeDomain
-	if domain != "" {
-		sub.TomlURL = sep1.URLFor(domain)
-		sub.BlockedURL = s.Expert.BlockedDomainURL(domain)
-		wg.Add(2)
+
+	if domain := issuer.HomeDomain; domain != "" {
+		tomlURL = sep1.URLFor(domain)
+		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			fetchCtx, cancel := context.WithTimeout(ctx, timeout)
+			tomlCtx, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()
-			tomlAttemptedAt = time.Now().UTC()
-			tomlDoc, tomlErr = s.Toml.Fetch(fetchCtx, domain)
+			attempted := time.Now().UTC()
+			doc, err := s.Toml.Fetch(tomlCtx, domain)
+			if err != nil {
+				tomlErr = sep1.CanonicalFailure(err)
+				// A host-policy refusal is a decision, not an outage. It is
+				// recorded as such so the domain check can report a refusal
+				// rather than a source that failed to answer.
+				tomlRefused = errors.Is(err, sep1.ErrNonPublicHost)
+				// A failed fetch has no completion time, so the attempt time is
+				// what failure evidence carries — explicitly labelled as an attempt
+				// by Evidence.Attempted.
+				tomlAttemptedAt = attempted
+			} else {
+				tomlDoc = doc
+			}
 		}()
+
+		blockedURL = s.Expert.BlockedDomainURL(domain)
+		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			fetchCtx, cancel := context.WithTimeout(ctx, timeout)
+			blockedCtx, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()
-			blockedAttemptedAt = time.Now().UTC()
-			blockedAnswer, blockedErr = s.Expert.BlockedDomain(fetchCtx, domain)
+			attempted := time.Now().UTC()
+			blocked, err := s.Expert.BlockedDomain(blockedCtx, domain)
+			blockedAttAt = attempted
+			if err != nil {
+				blockedErr = sep1.CanonicalFailure(err)
+			} else {
+				blockedVal = blocked
+				// The source's OWN completion time, which on a cache hit is
+				// the instant the answer was originally fetched. Stamping the
+				// lookup time here instead is the one thing the cache must
+				// never cause: Evidence.RetrievedAt would then claim a
+				// freshness the data does not have, in the report and in the
+				// preimage a verifier re-derives.
+				blockedFetchedAt = blocked.FetchedAt
+			}
 		}()
-	} else {
-		sub.BlockedSkipped = "the issuer advertises no home_domain to key the lookup on"
 	}
 
-	sub.DirectoryURL = s.Expert.DirectoryURL(a.Issuer)
+	dirURL = s.Expert.DirectoryURL(a.Issuer)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		fetchCtx, cancel := context.WithTimeout(ctx, timeout)
+		dirCtx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
-		directoryAttemptedAt = time.Now().UTC()
-		directoryAnswer, directoryErr = s.Expert.Directory(fetchCtx, a.Issuer)
+		attempted := time.Now().UTC()
+		entry, err := s.Expert.Directory(dirCtx, a.Issuer)
+		dirAttAt = attempted
+		if err != nil {
+			dirErr = sep1.CanonicalFailure(err)
+		} else {
+			dirVal = entry
+			// As above: the directory answer's own fetch time, not this scan's.
+			dirFetchedAt = entry.FetchedAt
+		}
 	}()
+
 	wg.Wait()
 
+	sub.TomlURL = tomlURL
 	sub.Toml = tomlDoc
+	sub.TomlErr = tomlErr
+	sub.TomlRefused = tomlRefused
 	sub.TomlAttemptedAt = tomlAttemptedAt
-	if tomlErr != nil {
-		sub.TomlErr = sep1.CanonicalFailure(tomlErr)
-		sub.TomlRefused = errors.Is(tomlErr, sep1.ErrNonPublicHost)
-	} else if tomlDoc != nil && tomlDoc.LinkedCurrencies(a.Code, a.Issuer) > 0 && !tomlDoc.Claims(a.Code, a.Issuer) {
+	// SEP-0001 lets a currency entry delegate to a separate per-currency
+	// document. Follow those links — one hop, bounded by
+	// sep1.MaxLinkedDocuments and subject to the same host policy — but
+	// only when the asset was not already claimed inline, which keeps the
+	// common case at one fetch, and only once the fetch it depends on has
+	// returned.
+	if tomlDoc != nil && tomlDoc.LinkedCurrencies(a.Code, a.Issuer) > 0 && !tomlDoc.Claims(a.Code, a.Issuer) {
 		sub.TomlLinked = s.Toml.ResolveLinked(ctx, tomlDoc, a.Code, a.Issuer)
 	}
 
-	sub.BlockedAttemptedAt = blockedAttemptedAt
-	if blockedErr != nil {
-		sub.BlockedErr = sep1.CanonicalFailure(blockedErr)
-	} else if blockedAnswer.Value != nil {
-		sub.Blocked = blockedAnswer.Value
-		sub.BlockedFetchedAt = blockedAnswer.FetchedAt
+	if issuer.HomeDomain != "" {
+		sub.BlockedURL = blockedURL
+		sub.Blocked = blockedVal.Value
+		sub.BlockedErr = blockedErr
+		sub.BlockedFetchedAt = blockedFetchedAt
+		sub.BlockedAttemptedAt = blockedAttAt
+	} else {
+		// The blocklist is keyed on a domain, and there is none: the question
+		// cannot be put at all. Record that explicitly rather than leaving the
+		// fields empty, because an empty Blocked with no error reads downstream
+		// as "the lookup ran and found no entry" — and a blocklist hit
+		// escalates severity, so that silently-dropped lookup is a risk this
+		// report would understate.
+		sub.BlockedSkipped = "the issuer advertises no home_domain to key the lookup on"
 	}
 
-	sub.DirectoryAttemptedAt = directoryAttemptedAt
-	if directoryErr != nil {
-		sub.DirectoryErr = sep1.CanonicalFailure(directoryErr)
-	} else {
-		sub.Directory = directoryAnswer.Value
-		sub.DirectoryFetchedAt = directoryAnswer.FetchedAt
-	}
+	sub.DirectoryURL = dirURL
+	sub.Directory = dirVal.Value
+	sub.DirectoryErr = dirErr
+	sub.DirectoryFetchedAt = dirFetchedAt
+	sub.DirectoryAttemptedAt = dirAttAt
 
 	// SEP-0042 asset lists, one signal each, in configuration order. Each is
 	// best-effort for the same reason every other consumed signal is: a list

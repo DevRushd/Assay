@@ -59,9 +59,7 @@ func serve(t *testing.T, status int, body string) *stellarexpert.Client {
 func serveSequence(t *testing.T, statuses []int, bodies []string) *stellarexpert.Client {
 	t.Helper()
 	seq := make([]int, len(statuses))
-	for i := range statuses {
-		seq[i] = statuses[i]
-	}
+	copy(seq, statuses)
 	bodiesSeq := append([]string{}, bodies...)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if len(seq) == 0 {

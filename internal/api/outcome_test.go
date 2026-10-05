@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -10,12 +11,18 @@ import (
 	"testing"
 
 	"github.com/use-assay/assay/internal/api"
-	"github.com/use-assay/assay/internal/scan"
+	"github.com/use-assay/assay/internal/stellarexpert"
 )
 
 // A valid mainnet asset: USDC. Its issuer has no home_domain dependency in
 // these tests — the stubs below answer every fetch the scanner makes.
 const logTestAsset = "USDC-GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+
+// roundTripFunc adapts a function to http.RoundTripper, so a test can answer a
+// request without a server.
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 // logServer is the harness for the logging tests: a Server wired to stub
 // upstreams, a buffer capturing every log line, and the handler.
@@ -79,15 +86,29 @@ func newLogServer(t *testing.T) *logServer {
 	horizon := &horizonStub{}
 	hSrv := httptest.NewServer(horizon)
 	t.Cleanup(hSrv.Close)
-	productionScanner := srv.Scanner.(*scan.Scanner)
-	productionScanner.Horizon.BaseURL = hSrv.URL
+	srv.Scanner.Horizon.BaseURL = hSrv.URL
 
 	// expertStub answers every StellarExpert endpoint with a well-formed
 	// "nothing listed" answer.
 	expert := &expertStub{}
 	eSrv := httptest.NewServer(expert)
 	t.Cleanup(eSrv.Close)
-	productionScanner.Expert.BaseURL = eSrv.URL
+	// No reputation cache: these tests flip an upstream between answering and
+	// failing, and a cached answer would mask the failure.
+	srv.Scanner.Expert = stellarexpert.NewWithOptions(eSrv.URL, stellarexpert.Options{})
+
+	// The issuer advertises example.com, so the scanner fetches its
+	// stellar.toml. Stub the fetcher's client so the test never touches the
+	// network; the document's contents do not matter to the logging classes
+	// under test, only that the source answered.
+	srv.Scanner.Toml.HTTP = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader("[[CURRENCIES]]\n")),
+			Request:    req,
+		}, nil
+	})}
 
 	return &logServer{
 		srv:     srv,
@@ -129,7 +150,7 @@ func (h *horizonStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"_embedded":{"records":[{"asset_type":"credit_alphanum4","asset_code":"` + code + `","asset_issuer":"` + issuer + `","flags":{"auth_required":false,"auth_revocable":false,"auth_immutable":true,"auth_clawback_enabled":false},"accounts":{"authorized":1,"unauthorized":0}}]}}`))
 	case strings.HasPrefix(r.URL.Path, "/accounts/"):
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"account_id":"GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN","home_domain":"","flags":{"auth_required":false,"auth_revocable":false,"auth_immutable":true,"auth_clawback_enabled":false}}`))
+		_, _ = w.Write([]byte(`{"account_id":"GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN","home_domain":"example.com","flags":{"auth_required":false,"auth_revocable":false,"auth_immutable":true,"auth_clawback_enabled":false}}`))
 	default:
 		w.WriteHeader(http.StatusNotFound)
 	}

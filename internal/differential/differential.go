@@ -125,19 +125,19 @@ func (c *Client) AccountFlags(ctx context.Context, accountID string) (horizon.Fl
 		"params":  map[string]any{"keys": []string{key}},
 	})
 	if err != nil {
-		return horizon.Flags{}, fmt.Errorf("%w: encode request: %v", ErrRPC, err)
+		return horizon.Flags{}, fmt.Errorf("%w: encode request: %w", ErrRPC, err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL, strings.NewReader(string(payload)))
 	if err != nil {
-		return horizon.Flags{}, fmt.Errorf("%w: build request: %v", ErrRPC, err)
+		return horizon.Flags{}, fmt.Errorf("%w: build request: %w", ErrRPC, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", c.UserAgent)
 
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return horizon.Flags{}, fmt.Errorf("%w: post %s: %v", ErrRPC, c.BaseURL, err)
+		return horizon.Flags{}, fmt.Errorf("%w: post %s: %w", ErrRPC, c.BaseURL, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -159,7 +159,7 @@ func (c *Client) AccountFlags(ctx context.Context, accountID string) (horizon.Fl
 	}
 	dec := json.NewDecoder(io.LimitReader(resp.Body, MaxBody))
 	if err := dec.Decode(&body); err != nil {
-		return horizon.Flags{}, fmt.Errorf("%w: decode response: %v", ErrRPC, err)
+		return horizon.Flags{}, fmt.Errorf("%w: decode response: %w", ErrRPC, err)
 	}
 	if body.Error != nil {
 		return horizon.Flags{}, fmt.Errorf("%w: rpc error %d: %s", ErrRPC, body.Error.Code, body.Error.Message)
@@ -173,7 +173,7 @@ func (c *Client) AccountFlags(ctx context.Context, accountID string) (horizon.Fl
 		}
 		raw, err := base64Decode(e.XDR)
 		if err != nil {
-			return horizon.Flags{}, fmt.Errorf("%w: decode entry xdr: %v", ErrRPC, err)
+			return horizon.Flags{}, fmt.Errorf("%w: decode entry xdr: %w", ErrRPC, err)
 		}
 		return ParseAccountFlags(raw)
 	}

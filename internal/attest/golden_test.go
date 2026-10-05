@@ -120,9 +120,6 @@ func TestGoldenFilesHaveCanonicalLineEndings(t *testing.T) {
 		t.Fatal("no golden preimage files found under testdata/vectors")
 	}
 	for _, e := range entries {
-		if filepath.Base(e) == "legacy-v1.preimage" {
-			continue
-		}
 		raw, err := os.ReadFile(e)
 		if err != nil {
 			t.Fatalf("read %s: %v", e, err)
@@ -136,19 +133,25 @@ func TestGoldenFilesHaveCanonicalLineEndings(t *testing.T) {
 		if bytes.HasSuffix(raw, []byte("\n\n")) {
 			t.Errorf("%s ends with a blank line: the canonical encoding terminates the last line exactly once", e)
 		}
-		versioned := false
-		for _, version := range []string{
-			attest.PreimageVersion,
-			attest.PreimageVersionCheckSet,
-			attest.PreimageVersionNetwork,
-		} {
-			if strings.HasPrefix(string(raw), version+"\n") {
-				versioned = true
-				break
-			}
-		}
-		if !versioned {
-			t.Errorf("%s does not start with a supported version line", e)
+		if !hasAnyPreimageVersion(string(raw)) {
+			t.Errorf("%s does not start with a known version line (v1, v2 or v3)", e)
 		}
 	}
+}
+
+// hasAnyPreimageVersion reports whether s begins with one of the version lines
+// the encoding has ever produced (v1, v2 or v3). The line-ending fixture check
+// must accept every version, because the vector directory also holds the
+// network-bound (v3) preimages.
+func hasAnyPreimageVersion(s string) bool {
+	for _, v := range []string{
+		attest.PreimageVersion,
+		attest.PreimageVersionCheckSet,
+		attest.PreimageVersionNetwork,
+	} {
+		if strings.HasPrefix(s, v+"\n") {
+			return true
+		}
+	}
+	return false
 }

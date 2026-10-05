@@ -13,7 +13,7 @@ type staticCheck struct {
 	finding mechanics.Finding
 }
 
-func (s staticCheck) ID() string { return s.id }
+func (s staticCheck) ID() string       { return s.id }
 func (s staticCheck) Describe() string { return s.id }
 func (s staticCheck) Run(ctx context.Context, sub *mechanics.Subject) (mechanics.Finding, error) {
 	return s.finding, nil

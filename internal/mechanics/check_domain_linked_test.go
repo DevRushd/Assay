@@ -79,7 +79,7 @@ func TestDomainLinkedClaimVerified(t *testing.T) {
 	for _, e := range f.Evidence {
 		if e.Source == "stellar.toml" && e.URL == linkedURL && strings.Contains(e.Claim, "linked document claims") {
 			found = true
-			if !e.RetrievedAt.Equal(fetched) {
+			if !e.RetrievedAt.Time().Equal(fetched) {
 				t.Errorf("linked claim evidence carries %s, want the linked document's fetch time %s", e.RetrievedAt, fetched)
 			}
 		}

@@ -27,6 +27,67 @@ var ErrNotFound = errors.New("horizon: not found")
 // Choosing one would be an arbitrary guess, so Assay refuses rather than guesses.
 var ErrMultipleRecords = errors.New("horizon: multiple records returned for asset")
 
+// ErrUnknownNetwork reports a base URL whose network cannot be determined.
+//
+// It is an error rather than a fallback for the same reason an unread flag is
+// the Unevaluated sentinel rather than Clear: guessing the network would put
+// an unverified name into the evidence preimage, and two scans of the same
+// code+issuer on different networks would then hash identically (#41). A
+// caller pointing at a private or unknown Horizon must name its network
+// explicitly instead.
+var ErrUnknownNetwork = errors.New("horizon: network cannot be determined from the base URL")
+
+// Network is the Stellar network a report's facts were read from, named by
+// the full network passphrase.
+//
+// The passphrase rather than a short name ("pubnet", "testnet") for the same
+// reason the mechanic bitset uses the ledger's own flag names: the preimage
+// commits to the ledger's vocabulary, and the passphrase is the one string
+// the ecosystem already treats as network identity. The values are fixed by
+// the protocol; they are not configuration and must not be edited.
+type Network string
+
+const (
+	// PublicNet is the pubnet mainnet, served by the SDF at
+	// https://horizon.stellar.org.
+	PublicNet Network = "Public Global Stellar Network ; September 2015"
+	// TestNet is the SDF testnet, served at https://horizon-testnet.stellar.org.
+	TestNet Network = "Test SDF Network ; September 2015"
+)
+
+// NetworkFor names the network a Horizon base URL serves.
+//
+// Only the SDF-operated hosts are recognized. Any other host — a mirror, a
+// local stub, a future third-party instance — returns ErrUnknownNetwork:
+// deriving a network name from an unrecognized URL would be a guess, and a
+// network name enters the evidence hash. Callers on such a host declare their
+// network explicitly (see scan.Scanner.Network) instead of letting the
+// derivation invent one.
+func NetworkFor(baseURL string) (Network, error) {
+	if baseURL == "" {
+		return "", fmt.Errorf("%w: no base URL", ErrUnknownNetwork)
+	}
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("%w: %q: %w", ErrUnknownNetwork, baseURL, err)
+	}
+	switch u.Hostname() {
+	case "horizon.stellar.org":
+		return PublicNet, nil
+	case "horizon-testnet.stellar.org":
+		return TestNet, nil
+	default:
+		return "", fmt.Errorf("%w: %q is not a known Horizon host; declare the network explicitly", ErrUnknownNetwork, u.Hostname())
+	}
+}
+
+// Network names the ledger this client reads. The client knows its own base
+// URL, so it is the one component positioned to answer; see NetworkFor for
+// why an unknown host is an error rather than a default.
+func (c *Client) Network() (Network, error) {
+	return NetworkFor(c.BaseURL)
+}
+
 // Version is the tool version that every outbound client reports in its
 // User-Agent. Bump it alongside any scanner-version release; the API
 // documents the value in release notes.

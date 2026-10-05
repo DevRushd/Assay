@@ -13,6 +13,7 @@ import (
 
 	"github.com/use-assay/assay/internal/mechanics"
 	"github.com/use-assay/assay/internal/scan"
+	"github.com/use-assay/assay/internal/sep1"
 )
 
 func TestParseAsset(t *testing.T) {
@@ -242,8 +243,11 @@ func TestTimeout(t *testing.T) {
 	if sub.TomlErr == "" {
 		t.Error("expected TomlErr to be set for slow source")
 	}
-	if sub.TomlErr != "timeout" {
-		t.Errorf("TomlErr = %q, want canonical timeout category", sub.TomlErr)
+	// The claim carries the canonical failure form, not the raw transport
+	// error: two scanners timing out on the same fetch must record the same
+	// string, or the evidence_hash would differ for the same failure.
+	if sub.TomlErr != sep1.FailureTimeout {
+		t.Errorf("TomlErr = %q, want the canonical %q", sub.TomlErr, sep1.FailureTimeout)
 	}
 
 	// Blocked and Directory finished normally and were not starved
@@ -450,9 +454,11 @@ func TestCacheHitDoesNotRefreshEvidenceTime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
+	// Evidence crosses the JSON boundary at whole-second precision (issue #52),
+	// so the comparison truncates the source's fetch time the same way.
 	want := map[string]time.Time{
-		"stellar.expert/directory":       first.DirectoryFetchedAt,
-		"stellar.expert/blocked-domains": first.BlockedFetchedAt,
+		"stellar.expert/directory":       first.DirectoryFetchedAt.Truncate(time.Second),
+		"stellar.expert/blocked-domains": first.BlockedFetchedAt.Truncate(time.Second),
 	}
 	seen := map[string]bool{}
 	for _, ev := range rep.Evidence {
@@ -464,9 +470,9 @@ func TestCacheHitDoesNotRefreshEvidenceTime(t *testing.T) {
 		if ev.Attempted {
 			t.Errorf("%s evidence marked Attempted on a cache hit", ev.Source)
 		}
-		if !ev.RetrievedAt.Time().Equal(at.Truncate(time.Second)) {
+		if !ev.RetrievedAt.Time().Equal(at) {
 			t.Errorf("%s evidence RetrievedAt = %s, want the original fetch time %s",
-				ev.Source, ev.RetrievedAt.Format(time.RFC3339Nano), at.Truncate(time.Second).Format(time.RFC3339Nano))
+				ev.Source, ev.RetrievedAt.Time().Format(time.RFC3339Nano), at.Format(time.RFC3339Nano))
 		}
 	}
 	for source := range want {
