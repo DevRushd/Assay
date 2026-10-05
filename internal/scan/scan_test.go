@@ -13,6 +13,7 @@ import (
 
 	"github.com/use-assay/assay/internal/mechanics"
 	"github.com/use-assay/assay/internal/scan"
+	"github.com/use-assay/assay/internal/sep1"
 )
 
 func TestParseAsset(t *testing.T) {
@@ -242,8 +243,11 @@ func TestTimeout(t *testing.T) {
 	if sub.TomlErr == "" {
 		t.Error("expected TomlErr to be set for slow source")
 	}
-	if !strings.Contains(sub.TomlErr, "context deadline exceeded") && !strings.Contains(sub.TomlErr, "deadline") {
-		t.Errorf("TomlErr = %q, want context deadline exceeded", sub.TomlErr)
+	// The claim carries the canonical failure form, not the raw transport
+	// error: two scanners timing out on the same fetch must record the same
+	// string, or the evidence_hash would differ for the same failure.
+	if sub.TomlErr != sep1.FailureTimeout {
+		t.Errorf("TomlErr = %q, want the canonical %q", sub.TomlErr, sep1.FailureTimeout)
 	}
 
 	// Blocked and Directory finished normally and were not starved

@@ -286,7 +286,7 @@ func (s *Scanner) Subject(ctx context.Context, a mechanics.Asset) (*mechanics.Su
 			attempted := time.Now().UTC()
 			doc, err := s.Toml.Fetch(tomlCtx, domain)
 			if err != nil {
-				tomlErr = err.Error()
+				tomlErr = sep1.CanonicalFailure(err)
 				// A host-policy refusal is a decision, not an outage. It is
 				// recorded as such so the domain check can report a refusal
 				// rather than a source that failed to answer.
@@ -310,7 +310,7 @@ func (s *Scanner) Subject(ctx context.Context, a mechanics.Asset) (*mechanics.Su
 			blocked, err := s.Expert.BlockedDomain(blockedCtx, domain)
 			blockedAttAt = attempted
 			if err != nil {
-				blockedErr = err.Error()
+				blockedErr = sep1.CanonicalFailure(err)
 			} else {
 				blockedVal = blocked
 				// The source's OWN completion time, which on a cache hit is
@@ -334,7 +334,7 @@ func (s *Scanner) Subject(ctx context.Context, a mechanics.Asset) (*mechanics.Su
 		entry, err := s.Expert.Directory(dirCtx, a.Issuer)
 		dirAttAt = attempted
 		if err != nil {
-			dirErr = err.Error()
+			dirErr = sep1.CanonicalFailure(err)
 		} else {
 			dirVal = entry
 			// As above: the directory answer's own fetch time, not this scan's.
@@ -399,7 +399,7 @@ func (s *Scanner) Subject(ctx context.Context, a mechanics.Asset) (*mechanics.Su
 				sub.AssetLists = append(sub.AssetLists, mechanics.AssetListSignal{
 					URL:         listURL,
 					AttemptedAt: attempted,
-					Err:         err.Error(),
+					Err:         sep1.CanonicalFailure(err),
 				})
 				continue
 			}
@@ -456,7 +456,7 @@ func (s *Scanner) SubjectWithHolder(ctx context.Context, a mechanics.Asset, hold
 		// completion time, not an attempt time.
 		sub.HolderFetchedAt = time.Now().UTC()
 	} else if err != nil {
-		sub.HolderTrustlineErr = err.Error()
+		sub.HolderTrustlineErr = sep1.CanonicalFailure(err)
 		sub.HolderAttemptedAt = time.Now().UTC()
 	} else {
 		sub.HolderTrustline = tl

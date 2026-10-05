@@ -44,6 +44,12 @@ func NewCanonicalTime(t time.Time) CanonicalTime {
 // Time returns the underlying instant.
 func (c CanonicalTime) Time() time.Time { return time.Time(c) }
 
+// Equal reports whether c and t represent the same instant.
+func (c CanonicalTime) Equal(t time.Time) bool { return c.Time().Equal(t) }
+
+// Format renders the underlying time with the requested layout.
+func (c CanonicalTime) Format(layout string) string { return c.Time().Format(layout) }
+
 // IsZero reports whether the instant is the zero time, mirroring
 // time.Time.IsZero for callers that treat a missing stamp as unknown.
 func (c CanonicalTime) IsZero() bool { return c.Time().IsZero() }
@@ -106,8 +112,17 @@ type Evidence struct {
 	// reproducing. A future encoding may bind it; that would be a version bump.
 	RequestedURL string `json:"requested_url,omitempty"`
 	Claim        string `json:"claim"`
-	// RetrievedAt marshals through the canonical whole-second UTC wire format
-	// (issue #52), not time.Time's default RFC3339Nano.
+	// RetrievedAt is when this specific fact was observed from the source (or
+	// when the attempt was made, if the fetch failed).
+	//
+	// Clock source: scanner host wall clock (time.Now().UTC()).
+	// Precision: nanoseconds in memory (time.Time); on the wire it marshals
+	// through the canonical whole-second UTC format (issue #52), not
+	// time.Time's default RFC3339Nano.
+	//
+	// When a fetch fails, RetrievedAt carries the attempt time, Attempted is
+	// true, and Claim reads "not retrievable: <reason>". An absent retrieval
+	// time is never represented as a zero timestamp. See docs/timestamps.md.
 	RetrievedAt CanonicalTime `json:"retrieved_at"`
 	// Attempted marks evidence whose RetrievedAt is the time the fetch was
 	// ATTEMPTED, not the time the source answered: the fetch failed, so there
@@ -457,6 +472,8 @@ type Report struct {
 	// check-set binding carry no CheckSet and are read as "unknown", never as
 	// "complete".
 	CheckSet []string `json:"checks,omitempty"`
+	// Checks is retained for the legacy evidence preimage encoding.
+	Checks []string `json:"-"`
 
 	// ScannerBound opts this report into the v3 preimage encoding, which
 	// adds a `scanner` line naming the code that produced the report

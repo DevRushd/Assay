@@ -131,6 +131,9 @@ func (c DomainCheck) Run(_ context.Context, s *Subject) (Finding, error) {
 	if !s.Toml.Claims(s.Asset.Code, s.Asset.Issuer) {
 		acc = AccountabilityUnverified
 		f.Mechanics = MechDomainUnverified
+		if s.TomlLinked != nil {
+			return c.resolveLinked(f, s, domain, s.TomlLinked), nil
+		}
 
 		// SEP-0001 lets a currency entry delegate to its own TOML file. When
 		// those links were followed, a match there is a claim like any other;
