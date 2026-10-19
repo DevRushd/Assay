@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - v*
+
+permissions:
+  contents: read
+  attestations: write
+  id-token: write
+
+jobs:
+  build:
+    name: Build assay binary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        run: make build
+
+      - name: Upload assay binary
+        uses: actions/upload-artifact@v6
+        with:
+          name: assay-v${{ github.ref_name }}
+          path: assay
+          retention-days: 5
+
+  checksums:
+    name: Write SHA-256 checksums
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download assay binary
+        uses: actions/download-artifact@v7
+        with:
+          name: assay-v${{ github.ref_name }}
+          path: .
+
+      - name: Generate SHA-256 checksum
+        run: |
+          sha256sum assay > assay-${{ github.ref_name }}.sha256
+          cat assay-${{ github.ref_name }}.sha256
+
+      - name: Upload checksum file
+        uses: actions/upload-artifact@v6
+        with:
+          name: assay-${{ github.ref_name }}-checksums
+          path: assay-${{ github.ref_name }}.sha256
+          retention-days: 5
+
+  provenance:
+    name: Attest build provenance
+    runs-on: ubuntu-latest
+    needs: [build, checksums]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download assay binary
+        uses: actions/download-artifact@v7
+        with:
+          name: assay-v${{ github.ref_name }}
+          path: .
+
+      - name: Verify checksum
+        run: |
+          expected=$(cat assay-${{ github.ref_name }}.sha256 | awk '{print $1}')
+          actual=$(sha256sum assay | awk '{print $1}')
+          if [ "$expected" != "$actual" ]; then
+            echo "checksum mismatch: expected $expected, got $actual" >&2
+            exit 1
+          fi
+          echo "checksum verified: $expected"
+
+      - name: Generate build provenance
+        # SHA-pinned per repository policy: workflows must reference GitHub
+        # actions by SHA, not by tag. `ef244123eb79f2f7a7e75d99086184180e6d0018`
+        # is the commit the v1.4.4 tag (`actions/attest-build-provenance`) is a
+        # lightweight pointer to (it appears as both the tag and its peeled
+        # commit target).
+        uses: actions/attest-build-provenance@ef244123eb79f2f7a7e75d99086184180e6d0018
+        with:
+          subject-path: assay
