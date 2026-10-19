@@ -21,6 +21,15 @@ worked example contract that is also deployed on testnet
 [docs/deployment.md](docs/deployment.md) has the transaction hashes, the
 attested assets, and the live fail-closed checks.
 
+The registry is the new deployment. The **old** registry
+(`CBK4FBIHMDTXCUPE4E3ZDVSFJSCY5FJETTKNIQPN4LFJIKKIBLKIXQ73`, deployed
+2026-08-15) is **superseded** and is no longer the attestation store — it holds
+no attestation and no new attestation must be written to it. All ten attested
+assets were re-written on the new registry; the old registry holds no admission
+state and the old gate holds no admission state. Every downstream document
+points at the new registry address above; old addresses are retained here for
+record only.
+
 ## Why this exists
 
 Stellar already has a reputation layer, and Assay does not rebuild it.

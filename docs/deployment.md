@@ -7,6 +7,22 @@ pubnet, and nothing here should be read as a claim that it is ready to be.
 
 | | |
 | --- | --- |
+| **Registry contract (new, canonical)** | `CBK4FBIHMDTXCUPE4E3ZDVSFJSCY5FJETTKNIQPN4LFJIKKIBLKIXQ73` |
+| Network | Testnet (`Test SDF Network ; September 2015`) |
+| Deployed | 2026-08-15 |
+| Wasm hash | `c4105b91b3ceae95b5a225c55bc6981b3dcf71d07fdd0ee5c79a21d25edd301b` |
+| Source | [`contracts/safety-registry`](../assay-contracts/contracts/safety-registry) |
+| Admin / attester | `GALIEUOBDLTFJHTVH5E3MT2BMDTQ3PKMX2U6BRXVKLEB7ARFORFNNMVY` |
+| Built with | `stellar` CLI 27.1.0, `soroban-sdk` 27.0.5 |
+
+**Registry contract (old, superseded)** — the pre-migration deployment. It
+can no longer be used as the attestation store for integrations: the new
+registry is the single source of truth. All ten attestations below were
+re-written on the new registry, so the old registry now holds no attestation
+and the old gate holds no admission state.
+
+| | |
+| --- | --- |
 | **Registry contract** | `CBK4FBIHMDTXCUPE4E3ZDVSFJSCY5FJETTKNIQPN4LFJIKKIBLKIXQ73` |
 | Network | Testnet (`Test SDF Network ; September 2015`) |
 | Deployed | 2026-08-15 |
@@ -20,7 +36,7 @@ deployed alongside it, wired to the registry above:
 
 | | |
 | --- | --- |
-| **Example gate contract** | `CAL5VYSWLKG367D5IYGI57XH7EMN5PLJ4CD6K3MO2HJBYYKEKPG3NKRX` |
+| **Example gate contract (new, canonical)** | `CAL5VYSWLKG367D5IYGI57XH7EMN5PLJ4CD6K3MO2HJBYYKEKPG3NKRX` |
 | Wasm hash | `ca40172ec8ebc259e7e21429748b2bd7cafe467fa3005d849d81d16938e8987c` |
 | Redeployed | 2026-09-16 — severity ceiling, [#26](https://github.com/use-assay/Assay/issues/26) |
 | Source | [`contracts/example-gate`](../assay-contracts/contracts/example-gate) |
@@ -51,14 +67,15 @@ Any of these can be read at
 ### Example gate instances
 
 Three instances exist on testnet and none can be removed. Only one should be
-used. Checked on 2026-09-17 by fetching each contract's wasm and hashing it, and
-by reading the constructor argument from each deploy transaction:
+used, and it is wired to the **new** registry below. Checked on 2026-09-17 by
+fetching each contract's wasm and hashing it, and by reading the constructor
+argument from each deploy transaction:
 
 | Instance | Status | Wasm | Registry at construction |
 | --- | --- | --- | --- |
-| `CAL5VYSWLKG367D5IYGI57XH7EMN5PLJ4CD6K3MO2HJBYYKEKPG3NKRX` | **canonical** — use this | `ca40172e…` (severity ceiling) | `CBK4FBIH…` |
-| `CCMA2SW23WUWTJGSC2MTUZVYWROMVTT42NLPTBCOAHGM632KEMNL5N3G` | duplicate, **unused** — nothing in the repo refers to it | `ca40172e…` (identical) | `CBK4FBIH…` |
-| `CANO57JRGTATHGLM26TWYPIXERSPVI5R52H33K7ZUJGGOEOVVZA44W3U` | **superseded, do not use** — admits critical-by-reputation assets ([#26](https://github.com/use-assay/Assay/issues/26)) | `d1683a1e…` (capability mask only) | `CBK4FBIH…` |
+| `CAL5VYSWLKG367D5IYGI57XH7EMN5PLJ4CD6K3MO2HJBYYKEKPG3NKRX` | **canonical** — use this | `ca40172e…` (severity ceiling) | `CBK4FBIHMDTXCUPE4E3ZDVSFJSCY5FJETTKNIQPN4LFJIKKIBLKIXQ73` |
+| `CCMA2SW23WUWTJGSC2MTUZVYWROMVTT42NLPTBCOAHGM632KEMNL5N3G` | duplicate, **unused** — nothing in the repo refers to it | `ca40172e…` (identical) | `CBK4FBIHMDTXCUPE4E3ZDVSFJSCY5FJETTKNIQPN4LFJIKKIBLKIXQ73` |
+| `CANO57JRGTATHGLM26TWYPIXERSPVI5R52H33K7ZUJGGOEOVVZA44W3U` | **superseded, do not use** — admits critical-by-reputation assets ([#26](https://github.com/use-assay/Assay/issues/26)) | `d1683a1e…` (capability mask only) | `CBK4FBIHMDTXCUPE4E3ZDVSFJSCY5FJETTKNIQPN4LFJIKKIBLKIXQ73` |
 
 ## Attested assets
 

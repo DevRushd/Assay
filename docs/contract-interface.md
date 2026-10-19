@@ -3,10 +3,10 @@
 The on-chain half of Assay: a Soroban contract another contract can call
 atomically, in the same transaction as the action it protects.
 
-Source: [`assay-contracts/contracts/safety-registry`](../assay-contracts/contracts/safety-registry).
-Deployed to testnet at `CBK4FBIHMDTXCUPE4E3ZDVSFJSCY5FJETTKNIQPN4LFJIKKIBLKIXQ73`
-— see [deployment.md](deployment.md) for addresses and transaction hashes, and
-[integrating.md](integrating.md) for how to call it.
+Source: [`assay-contracts/contracts/safety-registry`](../assay-contracts/contracts/safety-registry).Deployed to testnet at `CBK4FBIHMDTXCUPE4E3ZDVSFJSCY5FJETTKNIQPN4LFJIKKIBLKIXQ73`
+— see [deployment.md](deployment.md) for addresses, transaction hashes, and the
+superseded/old-address record, and [integrating.md](integrating.md) for how to
+call it.   
 
 ## What it is, honestly
 

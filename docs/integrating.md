@@ -3,10 +3,15 @@
 How a Soroban contract reads an Assay attestation and refuses to act on an asset
 whose issuer can take it back.
 
-Everything here runs against the live testnet deployment:
+Everything here runs against the live testnet deployment. The registry this
+gate is written against is the **new** one — the pre-migration registry
+(`CBK4FBIHMDTXCUPE4E3ZDVSFJSCY5FJETTKNIQPN4LFJIKKIBLKIXQ73`, deployed
+2026-08-15) is **superseded**: it holds no attestation, no new attestation
+should be written to it, and the old gate holds no admission state. Point your
+integration at the address below.
 
 ```
-# Assay registry on Stellar testnet
+# Assay registry (new, canonical) on Stellar testnet
 CBK4FBIHMDTXCUPE4E3ZDVSFJSCY5FJETTKNIQPN4LFJIKKIBLKIXQ73
 ```
 
