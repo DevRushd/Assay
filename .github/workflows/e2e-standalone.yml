@@ -1,0 +1,76 @@
+name: E2E standalone
+
+# The scanner and the contracts are tested separately: Go tests stop at
+# attest.Params, and the contracts run in the SDK's test environment. This job
+# joins them (issue #463) by deriving Params from committed fixtures and
+# submitting them with the stellar CLI to a local quickstart network.
+#
+# It is hermetic in the sense that matters: no Horizon, no StellarExpert, no
+# issuer domain and no public Stellar network is contacted. The only network
+# traffic is fetching the stellar CLI and the quickstart image. Nothing here
+# ever writes to testnet or pubnet.
+on:
+  pull_request:
+    paths:
+      - "assay-contracts/**"
+      - "internal/attest/**"
+      - "internal/mechanics/**"
+      - "cmd/attestfixture/**"
+      - "scripts/e2e-standalone.sh"
+      - "Makefile"
+      - ".github/workflows/e2e-standalone.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: Scan, attest and gate on a local network
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Pin the CLI rather than installing `latest`: the contract build and the
+      # submitted invocation arguments are part of what this job pins, and a
+      # CLI upgrade should be a deliberate change. The checksum is the one
+      # published with the 28.1.0 linux-x86_64 archive.
+      - name: install stellar CLI
+        run: |
+          set -eu
+          version=28.1.0
+          archive="stellar-cli-${version}-x86_64-unknown-linux-gnu.tar.gz"
+          curl -fsSLO "https://github.com/stellar/stellar-cli/releases/download/v${version}/${archive}"
+          echo "c1680deee94301d33ada7a17f98411e642a4248c727afbd2e43050d345746462  ${archive}" | sha256sum -c -
+          tar -xzf "$archive"
+          sudo install -m 0755 stellar /usr/local/bin/stellar
+          stellar --version
+
+      # rustup reads assay-contracts/rust-toolchain.toml here, installing the
+      # pinned channel, components and wasm32v1-none target.
+      - name: rust toolchain (pinned)
+        working-directory: assay-contracts
+        run: rustup toolchain install
+
+      # Local mode holds the passphrase and RPC endpoint the fixture attestor
+      # binds and the script uses. The action waits until RPC and friendbot are
+      # healthy before the next step runs.
+      - name: start local Stellar network
+        uses: stellar/quickstart@main
+        with:
+          network: local
+          enable: core,rpc,horizon
+          enable_logs: "false"
+
+      - name: run the end-to-end test
+        run: make e2e-standalone
+
+      - name: quickstart logs on failure
+        if: failure()
+        run: docker logs stellar || true

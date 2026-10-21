@@ -24,7 +24,9 @@ registry would be wrong for most of them and upgradeable only by contract
 migration. So the registry exposes the timestamp and takes the tolerance as a
 parameter: [integrating.md](integrating.md) calls this "your policy, not
 Assay's", and this page is what makes that choice an informed one instead of a
-copy-pasted constant.
+copy-pasted constant. See [timestamps.md](timestamps.md) for the exact clock
+sources, precision, and authority definitions separating observation, scan, and
+attestation timestamps.
 
 ## What can change under an attestation
 
@@ -49,6 +51,14 @@ Two of those rows deserve emphasis, because they differ in direction:
   clawback is inherited at trustline creation; only trustlines opened after the
   flag was set are exposed. See `internal/mechanics/check_trustline.go` for the
   per-holder reading of the same fact.
+
+A scan reuses cached third-party answers within a bounded lifetime, which does
+not change any of the reasoning above — an attestation's age is still its
+`attested_at` — but it does mean one report can carry evidence of several
+different ages. Each `evidence[].retrieved_at` records the instant its own
+source produced its answer, and never the moment a cache served it, so the true
+age of every claim stays readable. The lifetimes and the guarantee are specified
+in [caching.md](caching.md).
 
 So the freshest-dangerous-direction for a gate holding *existing* balances is a
 flag flip to `auth_revocable`, and it is instant. That asymmetry — staleness
@@ -194,6 +204,18 @@ That is the whole mechanism. It is intentionally thin, because freshness is a
 property of the *use*, not of the asset: the correct window for "should my
 vault accept a deposit right now" is different from "should this explorer show
 a green badge", and only the caller knows which question it is asking.
+
+## Off-chain freshness and report state
+
+Off-chain, `internal/mechanics.Report` represents freshness directly via its `state` and `stale` fields:
+
+| State (`state`) | `stale` | Meaning |
+| --- | --- | --- |
+| `valid` | `false` | A fresh, complete verdict within the policy window. |
+| `unknown` | `false` | A check could not conclude (`undetermined` or `unevaluated`). |
+| `stale` | `true` | The verdict was complete when made, but is older than the policy window. |
+
+The freshness evaluator (`internal/mechanics.FreshnessEvaluator`) checks a report against a policy window (defaulting to 24 hours). If stale, `attest.FromReport` refuses attestation (`ErrStale`), ensuring an expired verdict is never attested as fresh on-chain.
 
 ## Re-deriving these numbers
 

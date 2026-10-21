@@ -1,0 +1,34 @@
+{
+  "_links": {
+    "toml": {
+      "href": "https://circle.com/.well-known/stellar.toml"
+    }
+  },
+  "asset_type": "credit_alphanum4",
+  "asset_code": "USDC",
+  "asset_issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+  "paging_token": "USDC_GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN_credit_alphanum4",
+  "contract_id": "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75",
+  "num_claimable_balances": 941,
+  "num_liquidity_pools": 883,
+  "num_contracts": 49376,
+  "accounts": {
+    "authorized": 2322038,
+    "authorized_to_maintain_liabilities": 0,
+    "unauthorized": 0
+  },
+  "claimable_balances_amount": "22148.1307310",
+  "liquidity_pools_amount": "2406169.2686821",
+  "contracts_amount": "41890471.5479105",
+  "balances": {
+    "authorized": "342262290.2209207",
+    "authorized_to_maintain_liabilities": "0.0000000",
+    "unauthorized": "0.0000000"
+  },
+  "flags": {
+    "auth_required": false,
+    "auth_revocable": true,
+    "auth_immutable": false,
+    "auth_clawback_enabled": false
+  }
+}

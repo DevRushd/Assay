@@ -26,7 +26,15 @@ fn setup() -> Fixture<'static> {
     let registry = RegistryClient::new(&env, &registry_id);
     registry.init(&Address::generate(&env));
 
-    let gate_id = env.register(ExampleGate, (registry_id,));
+    let gate_id = env.register(
+        ExampleGate,
+        (
+            registry_id,
+            DEFAULT_MAX_SEVERITY,
+            DEFAULT_MAX_ATTESTATION_AGE,
+            DEFAULT_REFUSED_MECHANICS,
+        ),
+    );
     let gate = ExampleGateClient::new(&env, &gate_id);
 
     Fixture {
@@ -184,4 +192,158 @@ fn severity_above_ceiling_is_refused() {
         f.gate.try_deposit(&asset, &Address::generate(&f.env), &100),
         Err(Ok(Error::SeverityTooHigh))
     );
+}
+
+// ---------------------------------------------------------------------------
+// Fail-closed claims from docs/fail-closed.md (#108)
+// ---------------------------------------------------------------------------
+
+/// C7: every non-affirmative state is refused even with the gate's freshness
+/// requirement disabled (`MAX_ATTESTATION_AGE` is the contract's policy, but
+/// these calls simulate an infinitely fresh registry). `None`, above-ceiling,
+/// refused bits, and confiscation capability each refuse independently of the
+/// others, so no single staleness hole can turn a refusal into an admission.
+#[test]
+fn fail_closed_every_non_affirmative_state_refused_without_freshness() {
+    let f = setup();
+
+    let unattested = Address::generate(&f.env);
+    let critical = Address::generate(&f.env);
+    let confiscatable = Address::generate(&f.env);
+    let freezable = Address::generate(&f.env);
+    let clean = Address::generate(&f.env);
+
+    // No re-attestation of `clean`: it stays the only admitted asset.
+    f.registry
+        .attest(&critical, &SEVERITY_CRITICAL, &0, &hash(&f.env));
+    f.registry.attest(
+        &confiscatable,
+        &SEVERITY_HIGH,
+        &MECH_CLAWBACK_ENABLED,
+        &hash(&f.env),
+    );
+    f.registry.attest(
+        &freezable,
+        &SEVERITY_MEDIUM,
+        &MECH_AUTH_REVOCABLE,
+        &hash(&f.env),
+    );
+    f.registry
+        .attest(&clean, &SEVERITY_CLEAR, &0, &hash(&f.env));
+
+    assert!(!f.gate.would_admit(&unattested));
+    assert!(!f.gate.would_admit(&critical));
+    assert!(!f.gate.would_admit(&confiscatable));
+    assert!(!f.gate.would_admit(&freezable));
+    assert!(f.gate.would_admit(&clean));
+}
+
+// ---------------------------------------------------------------------------
+// Tests for issues #335, #336, #337
+// ---------------------------------------------------------------------------
+
+#[test]
+fn policy_entrypoint_returns_configured_policy() {
+    let f = setup();
+    let pol = f.gate.policy();
+    assert_eq!(pol.max_severity, DEFAULT_MAX_SEVERITY);
+    assert_eq!(pol.max_attestation_age, DEFAULT_MAX_ATTESTATION_AGE);
+    assert_eq!(pol.refused_mechanics, DEFAULT_REFUSED_MECHANICS);
+
+    // Also test with custom constructor arguments
+    let custom_gate_id = f.env.register(
+        ExampleGate,
+        (
+            f.registry.address.clone(),
+            1u32,
+            3600u64,
+            MECH_CLAWBACK_ENABLED,
+        ),
+    );
+    let custom_gate = ExampleGateClient::new(&f.env, &custom_gate_id);
+    let custom_pol = custom_gate.policy();
+    assert_eq!(custom_pol.max_severity, 1);
+    assert_eq!(custom_pol.max_attestation_age, 3600);
+    assert_eq!(custom_pol.refused_mechanics, MECH_CLAWBACK_ENABLED);
+}
+
+#[test]
+fn deposit_refuses_zero_amount() {
+    let f = setup();
+    let asset = Address::generate(&f.env);
+    let user = Address::generate(&f.env);
+    f.registry
+        .attest(&asset, &SEVERITY_CLEAR, &0, &hash(&f.env));
+
+    assert_eq!(
+        f.gate.try_deposit(&asset, &user, &0),
+        Err(Ok(Error::InvalidAmount))
+    );
+    assert_eq!(f.gate.balance(&asset, &user), 0);
+}
+
+#[test]
+fn deposit_refuses_negative_amount() {
+    let f = setup();
+    let asset = Address::generate(&f.env);
+    let user = Address::generate(&f.env);
+    f.registry
+        .attest(&asset, &SEVERITY_CLEAR, &0, &hash(&f.env));
+
+    assert_eq!(
+        f.gate.try_deposit(&asset, &user, &-1),
+        Err(Ok(Error::InvalidAmount))
+    );
+    assert_eq!(
+        f.gate.try_deposit(&asset, &user, &-500),
+        Err(Ok(Error::InvalidAmount))
+    );
+    assert_eq!(f.gate.balance(&asset, &user), 0);
+}
+
+#[test]
+fn deposit_refuses_overflow_rather_than_panicking() {
+    let f = setup();
+    let asset = Address::generate(&f.env);
+    let user = Address::generate(&f.env);
+    f.registry
+        .attest(&asset, &SEVERITY_CLEAR, &0, &hash(&f.env));
+
+    // Deposit MAX - 10 first
+    f.gate.deposit(&asset, &user, &(i128::MAX - 10));
+    assert_eq!(f.gate.balance(&asset, &user), i128::MAX - 10);
+
+    // Adding 11 would overflow i128
+    assert_eq!(
+        f.gate.try_deposit(&asset, &user, &11),
+        Err(Ok(Error::BalanceOverflow))
+    );
+    // Balance remains unchanged
+    assert_eq!(f.gate.balance(&asset, &user), i128::MAX - 10);
+
+    // Adding 10 reaches i128::MAX exactly
+    f.gate.deposit(&asset, &user, &10);
+    assert_eq!(f.gate.balance(&asset, &user), i128::MAX);
+
+    // Any positive deposit on MAX balance overflows
+    assert_eq!(
+        f.gate.try_deposit(&asset, &user, &1),
+        Err(Ok(Error::BalanceOverflow))
+    );
+    assert_eq!(f.gate.balance(&asset, &user), i128::MAX);
+}
+
+#[test]
+fn deposit_is_bookkeeping_only_and_increments_internal_balance() {
+    let f = setup();
+    let asset = Address::generate(&f.env);
+    let user = Address::generate(&f.env);
+    f.registry
+        .attest(&asset, &SEVERITY_CLEAR, &0, &hash(&f.env));
+
+    assert_eq!(f.gate.balance(&asset, &user), 0);
+    f.gate.deposit(&asset, &user, &50);
+    assert_eq!(f.gate.balance(&asset, &user), 50);
+    f.gate.deposit(&asset, &user, &75);
+    assert_eq!(f.gate.balance(&asset, &user), 125);
 }

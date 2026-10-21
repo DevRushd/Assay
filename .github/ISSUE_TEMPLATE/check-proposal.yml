@@ -1,0 +1,100 @@
+name: Check proposal
+description: Propose a mechanic check — with the asset that should trip it and the legitimate use that must not be over-flagged.
+labels: ["enhancement", "area:mechanics"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        A check is not done when it detects something. It is done when its
+        *judgment* has been measured
+        ([docs/adding-a-check.md](https://github.com/use-assay/Assay/blob/main/docs/adding-a-check.md)).
+
+
+        Any check can find `auth_revocable: true`; the reason to have a check
+        is that it knows when that is fine. So a proposal carries the same two
+        assets the eval will later require — one that should trip the check,
+        and one with the same mechanics used **legitimately** that must not be
+        over-flagged. A proposal without the counter-example is a request to
+        paint every clawback-capable asset red, which is the exact failure the
+        severity model exists to avoid: wrong about every well-run regulated
+        asset, and ignored because of it.
+
+
+        Nothing is implemented at proposal stage. This issue is where the
+        judgment gets argued before anyone writes code.
+  - type: textarea
+    id: mechanic
+    attributes:
+      label: The mechanic it examines
+      description: >-
+        What on the ledger or in the issuer's published claims the check looks
+        at. Cite the spec — [CAP-0035](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0035.md)
+        for clawback, [SEP-0001](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md)
+        for stellar.toml — and note what you verified against a live source
+        rather than assumed. A flag name or field encoded from memory is how
+        wrong checks get written.
+    validations:
+      required: true
+  - type: textarea
+    id: describe
+    attributes:
+      label: What it concludes, and what it does not
+      description: >-
+        Draft `Describe()` text. State the limits, not just the capability —
+        "says nothing about who the issuer is" is the kind of sentence that
+        belongs here, because it is what stops a caller over-reading the
+        result.
+    validations:
+      required: true
+  - type: dropdown
+    id: axis
+    attributes:
+      label: Which axis it lands on
+      description: >-
+        Severity is capability-only and reputation is monotonic upward; a check
+        that discounts severity is a security bug, not a design choice. Most
+        new mechanics are capability findings. The pattern for a check that
+        establishes accountability without touching severity is
+        `check_domain.go`.
+      options:
+        - Capability severity (auth flags)
+        - Escalation only (reputation, upward-only)
+        - Accountability (reported, never scored)
+    validations:
+      required: true
+  - type: textarea
+    id: tripping
+    attributes:
+      label: Asset that should trip it
+      description: >-
+        CODE-ISSUER, with the evidence that says it should — captured records,
+        not reputation folklore. These become the eval fixture: the
+        `asset.json` and `account.json` under
+        `internal/mechanics/testdata/<case-name>/`, with provenance recorded in
+        `testdata/PROVENANCE.md`.
+    validations:
+      required: true
+  - type: textarea
+    id: legitimate
+    attributes:
+      label: The legitimate counter-example that must not be over-flagged
+      description: >-
+        An asset with the **same mechanics used legitimately** that the check
+        must leave alone. Precedent lives in
+        [docs/eval.md](https://github.com/use-assay/Assay/blob/main/docs/eval.md):
+        USDC legitimately carries `auth_revocable`, USDZ legitimately carries
+        `auth_clawback_enabled`. If you cannot name the counter-example, the
+        check is not ready to propose — that is the point of this field.
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Where its data comes from
+      description: >-
+        Checks do no I/O: everything a check needs is fetched once, up front,
+        by `internal/scan` into `Subject`. Name the source and the field. If
+        `Subject` does not carry it yet, the proposal includes the fetch that
+        would add it.
+    validations:
+      required: false

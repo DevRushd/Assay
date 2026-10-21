@@ -22,8 +22,8 @@ import (
 // decision exists to prevent.
 func TestPreimageExcludesTimestamps(t *testing.T) {
 	rep := report(func(r *mechanics.Report) {
-		r.ScannedAt = time.Date(2026, 9, 24, 12, 0, 0, 123456789, time.UTC)
-		r.Evidence[0].RetrievedAt = time.Date(2016, 12, 31, 23, 59, 59, 999999999, time.UTC)
+		r.ScannedAt = mechanics.NewCanonicalTime(time.Date(2026, 9, 24, 12, 0, 0, 123456789, time.UTC))
+		r.Evidence[0].RetrievedAt = mechanics.NewCanonicalTime(time.Date(2016, 12, 31, 23, 59, 59, 999999999, time.UTC))
 	})
 
 	params, err := attest.FromReport(rep)
@@ -50,7 +50,7 @@ func TestPreimageExcludesTimestamps(t *testing.T) {
 		key := strings.SplitN(got, "\t", 2)[0]
 		switch key {
 		case "assay-evidence-v1", "asset", "severity", "base_severity",
-			"escalated", "mechanics", "accountability", "evidence":
+			"escalated", "mechanics", "accountability", "checks", "evidence":
 		default:
 			t.Errorf("preimage record key %q is not in the documented format table", key)
 		}
@@ -58,9 +58,9 @@ func TestPreimageExcludesTimestamps(t *testing.T) {
 
 	// And the hash is invariant under an arbitrary shift of every clock field.
 	shifted := *rep
-	shifted.ScannedAt = rep.ScannedAt.Add(100 * 24 * time.Hour)
+	shifted.ScannedAt = mechanics.NewCanonicalTime(rep.ScannedAt.Time().Add(100 * 24 * time.Hour))
 	shifted.Evidence = append([]mechanics.Evidence(nil), rep.Evidence...)
-	shifted.Evidence[0].RetrievedAt = rep.Evidence[0].RetrievedAt.Add(-100 * 24 * time.Hour)
+	shifted.Evidence[0].RetrievedAt = mechanics.NewCanonicalTime(rep.Evidence[0].RetrievedAt.Time().Add(-100 * 24 * time.Hour))
 	after, err := attest.FromReport(&shifted)
 	if err != nil {
 		t.Fatalf("FromReport (shifted): %v", err)
@@ -78,7 +78,7 @@ func TestPreimageExcludesTimestamps(t *testing.T) {
 func TestPreimageBytesInvariantUnderTimestampShift(t *testing.T) {
 	base := time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)
 
-	params0, err := attest.FromReport(report(func(r *mechanics.Report) { r.ScannedAt = base }))
+	params0, err := attest.FromReport(report(func(r *mechanics.Report) { r.ScannedAt = mechanics.NewCanonicalTime(base) }))
 	if err != nil {
 		t.Fatalf("FromReport: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestPreimageBytesInvariantUnderTimestampShift(t *testing.T) {
 		"day":        24 * time.Hour,
 	} {
 		paramsN, err := attest.FromReport(report(func(r *mechanics.Report) {
-			r.ScannedAt = base.Add(d)
+			r.ScannedAt = mechanics.NewCanonicalTime(base.Add(d))
 		}))
 		if err != nil {
 			t.Fatalf("FromReport (+%s): %v", name, err)
@@ -114,8 +114,8 @@ func TestPreimageTimeHashesClaimsNotTheClock(t *testing.T) {
 		t.Fatalf("FromReport: %v", err)
 	}
 	b, err := attest.FromReport(report(func(r *mechanics.Report) {
-		r.ScannedAt = r.ScannedAt.Add(72 * time.Hour)
-		r.Evidence[0].RetrievedAt = r.Evidence[0].RetrievedAt.Add(72 * time.Hour)
+		r.ScannedAt = mechanics.NewCanonicalTime(r.ScannedAt.Time().Add(72 * time.Hour))
+		r.Evidence[0].RetrievedAt = mechanics.NewCanonicalTime(r.Evidence[0].RetrievedAt.Time().Add(72 * time.Hour))
 	}))
 	if err != nil {
 		t.Fatalf("FromReport (shifted): %v", err)

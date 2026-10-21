@@ -10,21 +10,79 @@ NETWORK ?= testnet
 SOURCE ?= assay-attester
 CONTRACT_ID ?= CBK4FBIHMDTXCUPE4E3ZDVSFJSCY5FJETTKNIQPN4LFJIKKIBLKIXQ73
 
-.PHONY: all build test cover lint fmt vet run clean \
+.PHONY: all build build-release test test-notify test-preimage test-reproducibility cover lint fmt vet run clean \
+	offline-test e2e-standalone \
 	contract-test contract-lint contract-build \
-	build-contract deploy-testnet attest read verify-gate
+	build-contract deploy-testnet attest read verify-gate verify-wasm \
+	eval-record eval-compare
 
 all: build
 
 build:
 	go build -o $(BINARY) ./cmd/assay
 
-test:
-	go test -race $(PKG)
+# build-release builds the scanner under the flags that make the binary
+# reproducible from any directory on any machine:
+#
+#   -trimpath      removes absolute file system paths from the binary
+#   -buildvcs=false removes the working tree's VCS state (a dirty checkout
+#                  would otherwise stamp vcs.modified=true)
+#   CGO_ENABLED=0  removes the host C toolchain as an input
+#
+# The Go toolchain is pinned by go.mod, so the two inputs left are the source
+# and the flags. CI proves the property by building this target twice in
+# different directories and comparing hashes; see CONTRIBUTING.md
+# ("Reproducible scanner builds").
+#
+# Note: this does not stamp a version. A build from a checkout reports
+# ScannerIdentity "devel"; tagged releases are built by
+# .github/workflows/release.yml with `go install ...@<tag>`, which stamps the
+# tag. That split is deliberate: reproducibility of the local build and
+# version binding of a release are separate guarantees.
+build-release:
+	CGO_ENABLED=0 go build -trimpath -buildvcs=false -o $(BINARY) ./cmd/assay
 
+test:
+	go test -race -shuffle=on $(PKG)
+
+# test-notify exercises scripts/notify-scheduled-failure.sh against a stubbed
+# gh, covering open/update/comment/close and the "exactly one issue" rule. CI
+# runs it alongside the merge-gate tests.
+test-notify:
+	bash ./scripts/test-notify-scheduled-failure.sh
+
+# test-reproducibility exercises scripts/reproducibility.sh against a stubbed
+# assay binary and fixture tables, covering the PASS/MISMATCH/ENCODING/
+# INCONCLUSIVE outcomes, their exit-code precedence, and the refusal of a
+# table without a valid Preimage column. It needs no network, so CI runs it
+# even though the script it tests does.
+test-reproducibility:
+	bash ./scripts/test-reproducibility.sh
+
+# test-preimage runs the independent Python encoder (written from
+# docs/contract-interface.md alone) against the Go encoder over every committed
+# vector, every internal/mechanics/testdata subject, and the language-neutral
+# conformance cases. CI runs this as its own job; a deliberate encoding change
+# fails here until the specification and both implementations agree.
+test-preimage:
+	go test ./internal/attest/ -run IndependentEncoder -v
+
+# e2e-standalone joins the scanner and the contracts on a local quickstart
+# network (issue #463): fixture-derived Params are submitted with the stellar
+# CLI, then get_safety and the example gate are asserted. CI starts the network
+# with stellar/quickstart; locally, run `stellar container start local` first.
+# The script refuses a non-loopback RPC URL and never contacts a public network.
+e2e-standalone:
+	./scripts/e2e-standalone.sh
+
+# cover prints the same per-package table CI puts in the job summary
+# (scripts/coverage-report.sh), lowest coverage first. It reports; it does not
+# gate. The test exit status is preserved so a failing test still fails.
 cover:
-	go test -coverprofile=coverage.out $(PKG)
-	go tool cover -func=coverage.out | tail -1
+	@go test -covermode=atomic -coverprofile=coverage.out $(PKG) > coverage.log 2>&1; \
+	rc=$$?; cat coverage.log; echo; \
+	./scripts/coverage-report.sh coverage.log coverage.out; \
+	exit $$rc
 
 fmt:
 	gofmt -w .
@@ -54,6 +112,20 @@ contract-build:
 build-contract:
 	stellar contract build --manifest-path $(CONTRACTS)/Cargo.toml \
 		--package assay-safety-registry --out-dir $(CONTRACTS)/out
+
+# verify-wasm rebuilds each contract from the committed source and checks the
+# result against the wasm hashes recorded in docs/deployment.md. It builds into
+# a temporary directory, so it never disturbs the artifact deploy-testnet would
+# upload, and it never edits the document or submits a transaction.
+#
+# It exits 0 only when every recorded hash is reproduced. Until
+# assay-contracts/rust-toolchain.toml exists (#127) the toolchain is whatever
+# rustup has installed, which does not determine the bytes, so the run reports
+# UNVERIFIABLE and exits 2. That is the honest answer, not a failure of the
+# source. See docs/deployment.md ("Does the source still build what is
+# deployed?").
+verify-wasm:
+	./scripts/verify-wasm-source.sh
 
 deploy-testnet: build-contract
 	stellar contract deploy --wasm $(WASM) \
@@ -101,7 +173,42 @@ verify-gate:
 	@test -n "$(BASE)" || { echo 'usage: make verify-gate BASE=<sha-or-ref> HEAD=<sha-or-ref>'; exit 2; }
 	./scripts/merge-gate.sh "$(BASE)" "$(HEAD)"
 
+test-gate:
+	bash ./scripts/test-merge-gate.sh
+
+# Records the labelled corpus's classification, per subject and per check.
+# Commit the result when the classifier's output is intended to change; it is
+# the baseline eval-compare diffs against.
+eval-record:
+	go run ./cmd/eval -out docs/eval-baseline.json
+
+# Re-captures one corpus fixture from the URLs recorded in PROVENANCE.md and
+# prints a diff, so a maintainer can judge whether a moved verdict reflects a
+# real change or a regression. It needs network access, so it is deliberately
+# not part of `make test` or CI. A fetch that fails writes nothing.
+#
+#   make refresh-fixture SUBJECT=aqua-clear-verified
+#   make refresh-fixture SUBJECT=aqua-clear-verified DRY_RUN=1
+refresh-fixture:
+	@test -n "$(SUBJECT)" || { echo 'usage: make refresh-fixture SUBJECT=<fixture-dir>'; exit 2; }
+	go run ./cmd/refreshfixture -subject "$(SUBJECT)" $(if $(DRY_RUN),-dry-run,)
+
+# Compares the current classifier against the recorded baseline and reports
+# what moved: severity, mechanics and evidence separately, with undetermined
+# subjects and corpus membership changes reported on their own. Exits 0 on a
+# movement so it can be read as a report; add STRICT=1 to make movement fail.
+eval-compare:
+	@go run ./cmd/eval -compare docs/eval-baseline.json $(if $(STRICT),-strict,)
+
+# Prints the confusion matrix over the labelled corpus, showing agreements
+# and disagreements per severity level and per check with undetermined as
+# its own outcome class. Sample size is printed with every result.
+# Precision and recall require -precision-recall and carry a sample-size
+# caveat.
+eval:
+	@go run ./cmd/eval -confusion -precision-recall
+
 clean:
-	rm -f $(BINARY) coverage.out coverage.html
+	rm -f $(BINARY) coverage.out coverage.html coverage.log
 	rm -rf $(CONTRACTS)/out
 	cd $(CONTRACTS) && cargo clean

@@ -1,0 +1,298 @@
+openapi: 3.0.3
+info:
+  title: Assay API
+  version: 1.0.0
+  description: Stellar asset trap scanner API contract.
+paths:
+  /api/v1/scan:
+    get:
+      summary: Scan an asset
+      parameters:
+        - name: asset
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Asset code and issuer (e.g. USDC-GA5Z...)
+        - name: holder
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional holder address to check trustline / balance state
+      responses:
+        '200':
+          description: Successful scan report. May indicate degraded state via header.
+          headers:
+            X-Assay-Undetermined:
+              schema:
+                type: string
+                enum: ["true"]
+              description: Present and set to "true" if the scan was degraded by a source outage.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  severity:
+                    type: string
+                  accountability:
+                    type: string
+                  undetermined:
+                    type: boolean
+                  undetermined_checks:
+                    type: array
+                    items:
+                      type: string
+                  findings:
+                    type: array
+                    items:
+                      type: object
+        '400':
+          description: >-
+            Invalid request parameters, or an asset identifier naming the
+            network's native asset (native/XLM), which has no issuer and no
+            authorization flags and is therefore never scanned or attested.
+        '404':
+          description: Asset not found on the ledger.
+        '502':
+          description: Upstream scan failure.
+  /api/v1/history:
+    get:
+      summary: Read an asset's recorded observations and derived transitions
+      description: >-
+        Reads what GET /api/v1/scan recorded; it never scans. An asset with no
+        observations is a successful empty result with state "missing", never
+        a 404.
+      parameters:
+        - name: asset
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Asset code and issuer (e.g. USDC-GA5Z...)
+      responses:
+        '200':
+          description: History in time order, oldest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [asset, state, count, observations, transitions, retention]
+                properties:
+                  asset:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      issuer:
+                        type: string
+                  state:
+                    type: string
+                    enum: [valid, unknown, missing]
+                  reason:
+                    type: string
+                    description: Present when state is not valid.
+                  count:
+                    type: integer
+                  observations:
+                    type: array
+                    items:
+                      type: object
+                  transitions:
+                    type: array
+                    items:
+                      type: object
+                  latest_at:
+                    type: string
+                    format: date-time
+                  latest_age_secs:
+                    type: integer
+                  retention:
+                    type: integer
+        '400':
+          description: Missing or invalid asset, or the network's native asset.
+  /api/v1/exposure:
+    get:
+      summary: List trustlines held by an account with per-asset severity and trustline finding
+      description: >-
+        Bounded and paginated: one request runs up to `limit` full scans
+        (default 10, maximum 50). Results are per asset; there is no
+        aggregate portfolio score. Each asset carries its own undetermined
+        flag and undetermined_checks.
+      parameters:
+        - name: account
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Holder's account address (G...)
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 10
+            maximum: 50
+            minimum: 1
+          description: Page size; values above the maximum are clamped to it.
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Index of the first trustline to return for the next page.
+      responses:
+        '200':
+          description: One page of per-asset exposure results.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [account, total, limit, count, assets]
+                properties:
+                  account:
+                    type: string
+                  total:
+                    type: integer
+                    description: Credit trustlines on the account (whole listing, not this page).
+                  limit:
+                    type: integer
+                    description: Page size actually applied.
+                  count:
+                    type: integer
+                  next_cursor:
+                    type: integer
+                    description: Cursor for the next page; absent on the last page.
+                  assets:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        asset:
+                          type: object
+                          properties:
+                            code:
+                              type: string
+                            issuer:
+                              type: string
+                        severity:
+                          type: string
+                          enum: [clear, low, medium, high, critical, unevaluated]
+                        undetermined:
+                          type: boolean
+                        undetermined_checks:
+                          type: array
+                          items:
+                            type: string
+                        finding:
+                          type: object
+                          description: Holder-trustline finding; absent when that asset's scan failed.
+                        reason:
+                          type: string
+                          description: Why this asset's scan failed; present only when finding is absent.
+        '400':
+          description: Missing or invalid account, limit, or cursor.
+        '404':
+          description: Account not found on the ledger.
+        '429':
+          description: Rate limited. Retry-After header gives seconds to wait.
+        '502':
+          description: The account's trustline list could not be fetched.
+  /metrics:
+    get:
+      summary: Scan outcome and per-source failure counters
+      description: Counters accumulated since process start.
+      responses:
+        '200':
+          description: A snapshot of the counters.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  scan_outcomes:
+                    type: object
+                    additionalProperties:
+                      type: integer
+                  source_failures:
+                    type: object
+                    additionalProperties:
+                      type: integer
+  /healthz:
+    get:
+      summary: Liveness check
+      description: Reports only that the process is up; it checks no upstream.
+      responses:
+        '200':
+          description: The process is running.
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: ok
+  /readyz:
+    get:
+      summary: Per-upstream readiness check
+      description: >-
+        The HTTP status tracks the body's status: 200 ready; 503 degraded,
+        unavailable, or unknown. No failing probe reports ready.
+      responses:
+        '200':
+          description: Every checkable upstream is reachable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Readiness'
+        '503':
+          description: Degraded, unavailable, or unknown; see status and upstreams.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Readiness'
+  /:
+    get:
+      summary: Serve the single-file UI
+      responses:
+        '200':
+          description: The embedded HTML page.
+          content:
+            text/html:
+              schema:
+                type: string
+components:
+  schemas:
+    Readiness:
+      type: object
+      required: [status, checked_at, age_secs, upstreams]
+      properties:
+        status:
+          type: string
+          enum: [ready, degraded, unavailable, unknown]
+        reason:
+          type: string
+          description: Present when status is not ready.
+        checked_at:
+          type: string
+          format: date-time
+        age_secs:
+          type: integer
+        upstreams:
+          type: array
+          items:
+            type: object
+            required: [name, kind, reachable, probe_url]
+            properties:
+              name:
+                type: string
+              kind:
+                type: string
+                enum: [horizon, consumed]
+              reachable:
+                type: boolean
+              probe_error:
+                type: string
+              probe_url:
+                type: string

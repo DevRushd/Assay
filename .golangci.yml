@@ -3,10 +3,15 @@ version: "2"
 linters:
   enable:
     - bodyclose
+    # Error identity is load-bearing: exit codes, undetermined classification
+    # and fail-closed paths compare with errors.Is. errorlint catches `==` on
+    # wrapped errors; wrapcheck keeps errors wrapped as they cross package
+    # boundaries, so errors.Is can see through the context added along the way.
     - errorlint
     - misspell
     - revive
     - unconvert
+    - wrapcheck
   settings:
     revive:
       rules:

@@ -65,9 +65,12 @@ CRITICAL_PATHS=(
     # The contracts.
     "assay-contracts/contracts/safety-registry/src/lib.rs"    # the contract's fail-closed logic and ABI constants
     "assay-contracts/contracts/example-gate/src/lib.rs"       # the published integration example
+    "assay-contracts/contracts/safety-registry/test_snapshots" # recorded outputs; a change can mask a behaviour change
+    "assay-contracts/contracts/example-gate/test_snapshots"   # recorded outputs; a change can mask a behaviour change
 
     # The gate itself. A PR must not be able to weaken the check that reviews it.
     "scripts/merge-gate.sh"
+    "scripts/check-codeowners.sh"                         # keeps GitHub review routing aligned with this list
     ".github/workflows"
 )
 

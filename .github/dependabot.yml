@@ -1,0 +1,43 @@
+# Dependency update automation.
+
+# Decision (issue #132, recorded 2026-09-28): enable Dependabot for the three
+# ecosystems this repository actually uses -- Go modules, Cargo (the Soroban
+# contract), and GitHub Actions -- on a weekly cadence.
+#
+# Why weekly: Assay has one direct Go dependency and a small Cargo tree, so
+# daily PRs would be noise against a tree that changes slowly. Weekly batches
+# the review work without letting anything drift for months.
+#
+# Interaction with the merge gate: every ecosystem below touches a path that
+# scripts/merge-gate.sh owns -- go.mod and go.sum, the contract's
+# assay-contracts/Cargo.toml and assay-contracts/Cargo.lock, and the
+# .github/workflows directory for action bumps -- so Dependabot PRs are
+# automatically held for maintainer review. The gate is advisory by design --
+# it flags, a human merges -- which is exactly the policy for automated
+# dependency PRs: they are generated unattended but can never merge
+# unattended. Unattended automated merging of dependency changes is
+# explicitly rejected by this decision.
+#
+# Action pinning strategy: floating major tags (actions/checkout@v5) are the
+# current state. The actions-ecosystem updates below surface new majors as
+# PRs, but a tag is mutable upstream, so each workflow step is being pinned
+# to a full commit SHA with the version in a comment (done for this
+# repository as part of #132). New steps should be SHA-pinned the same way.
+# Dependabot keeps SHAs current the same way it updates version tags.
+
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: cargo
+    directory: /assay-contracts
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

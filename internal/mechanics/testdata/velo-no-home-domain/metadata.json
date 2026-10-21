@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "subject": "velo-no-home-domain",
+  "why": "an issuer account that carries no home_domain at all: the domain claim is absent rather than wrong, so accountability must be unknown not unverified, and severity must stay clear (#3). No domain was ever advertised, so the sep1-domain finding is unknown, not a failed verification, and still carries the unverified bit, because no identity was published to verify against. With no home_domain there is no domain to key the blocklist on, so the reputation question cannot be put at all: the finding is undetermined, never a clean result.",
+  "files": [
+    {"file": "asset.json", "url": "https://horizon.stellar.org/assets?asset_code=VELO&asset_issuer=GDM4RQUQQUVSKQA7S6EM7XBZP3FCGH4Q7CL6TABQ7B2BEJ5ERARM2M5M", "captured": "2026-09-28"},
+    {"file": "account.json", "url": "https://horizon.stellar.org/accounts/GDM4RQUQQUVSKQA7S6EM7XBZP3FCGH4Q7CL6TABQ7B2BEJ5ERARM2M5M", "captured": "2026-09-28", "note": "Horizon omits the home_domain field entirely for this account, so neither stellar.toml nor a blocked-domain lookup was consulted"},
+    {"file": "directory.json", "url": "https://api.stellar.expert/explorer/directory/GDM4RQUQQUVSKQA7S6EM7XBZP3FCGH4Q7CL6TABQ7B2BEJ5ERARM2M5M", "captured": "2026-09-28"}
+  ],
+  "expected": {
+    "state": "valid",
+    "base": "clear",
+    "severity": "clear",
+    "escalated": false,
+    "undetermined": true,
+    "accountability": "unknown",
+    "checks": {
+      "capability": {"severity": "clear"},
+      "mutability": {"severity": "clear"},
+      "sep1-domain": {"severity": "clear", "mechanics": ["domain_unverified"]},
+      "reputation": {"undetermined": true}
+    }
+  }
+}

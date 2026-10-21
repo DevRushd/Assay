@@ -1,0 +1,1 @@
+sep1: fetch https://redirect.example/.well-known/stellar.toml: Get "https://other.example/.well-known/stellar.toml": cross-host redirect from redirect.example to other.example

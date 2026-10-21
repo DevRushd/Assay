@@ -1,0 +1,115 @@
+name: Reproducibility
+
+# Cross-machine reproducibility of the attested evidence_hashes.
+#
+# This job re-scans the ten attested assets live and diffs each fresh
+# evidence_hash against docs/deployment.md. It is the regression test for
+# #24 (host-specific transport text in the preimage): while #24 is open it is
+# expected to report BERKSHIRE/KALE mismatches from any machine whose DNS
+# resolver differs from the attester's.
+#
+# Deliberately NOT on the PR path: it depends on live third-party sources
+# (Horizon, StellarExpert, issuer stellar.toml hosts), so running it per-PR
+# would make CI flaky for reasons unrelated to the change under review. It
+# runs weekly and on demand instead, and it never gates merges. See
+# CONTRIBUTING.md ("Reproducibility job").
+on:
+  schedule:
+    # Weekly, Monday 06:00 UTC. Frequent enough to catch drift, sparse enough
+    # not to hammer public sources with ten live scans per run.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # The notification step below opens/closes the workflow's tracking issue on
+  # scheduled runs (#277). Nothing else in this workflow writes anywhere.
+  issues: write
+
+jobs:
+  reproducibility:
+    name: Reproducibility
+    runs-on: ubuntu-latest
+    # Ten live scans at ~5-15s each, plus retries on transient errors.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      # Pinned to the module's own version, as in ci.yml: when `stable`
+      # moved to a newer Go than golangci-lint was built with, every check
+      # failed for reasons unrelated to the code under test.
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: build assay
+        run: go build -o assay ./cmd/assay
+
+      - name: recompute attested evidence hashes
+        id: check
+        run: |
+          set +e
+          ./scripts/reproducibility.sh 2>&1 | tee repro.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Reproducibility"
+            echo
+            echo '```'
+            cat repro.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Script exit codes: 0 pass, 1 evidence mismatch, 2 inconclusive,
+          # 3 encoding drift. GitHub has no neutral conclusion for a job, so
+          # inconclusive is reported as a warning with a green check: it must
+          # never read as a pass (the summary says INCONCLUSIVE, not PASS) and
+          # never as a hard failure (an upstream outage is not a
+          # reproducibility bug). 1 and 3 are deterministic findings and fail
+          # the job; each needs a different fix, so the log names which.
+          case "$rc" in
+            0) echo "::notice title=Reproducibility::All attested evidence hashes reproduce." ;;
+            2) echo "::warning title=Reproducibility::Inconclusive: at least one scan could not complete. Not a pass, not a failure; re-run when sources recover." ;;
+            3) echo "::error title=Reproducibility::Encoding drift (exit 3): a recorded hash reproduces under the current encoding, not under the version the table records. See the log."; exit 1 ;;
+            *) echo "::error title=Reproducibility::Mismatch or script error (exit $rc). See the log for the asset and both hashes."; exit 1 ;;
+          esac
+
+      # Scheduled-run visibility (#277): a red scheduled run that nobody sees
+      # is the same silence this job exists to end, one level up. One tracking
+      # issue per workflow: opened on failure, commented on while inconclusive
+      # (exit 2), closed by the next green run. Push/PR runs are unaffected
+      # (this step is schedule-only) and the issue pages no one; see
+      # scripts/notify-scheduled-failure.sh.
+      - name: notify on scheduled failure
+        if: ${{ !cancelled() && github.event_name == 'schedule' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ job.status }}" = "failure" ]; then
+            outcome=failure
+          elif [ "${{ steps.check.outputs.rc }}" = "2" ]; then
+            outcome=inconclusive
+          else
+            outcome=success
+          fi
+
+          # Name the failing step only when it is this workflow's check, not
+          # (say) a setup failure before it.
+          step_args=()
+          if [ "${{ steps.check.outcome }}" = "failure" ]; then
+            step_args=(--step "recompute attested evidence hashes")
+          fi
+
+          summary_args=()
+          if [ -f repro.log ]; then
+            summary_args=(--summary-file repro.log)
+          fi
+
+          ./scripts/notify-scheduled-failure.sh \
+            --workflow "${{ github.workflow }}" \
+            --outcome "$outcome" \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            "${step_args[@]}" "${summary_args[@]}"

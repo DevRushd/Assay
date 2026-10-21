@@ -1,0 +1,21 @@
+# Blank issues are disabled deliberately. A report against a scanner is only
+# actionable with the asset identifier, the observed output, and what the
+# ledger actually shows; a check proposal is only actionable with the asset
+# that should trip it and the legitimate use that must not be over-flagged.
+# Blank issues arrive missing at least one of those, and the round-trip to
+# collect it is what the templates exist to prevent.
+#
+# Unsure whether the behaviour is actually wrong? You are still welcome: use
+# "Scanner bug report", paste the outputs you have, and say what you are unsure
+# about. Evidence, not confidence, is the bar.
+blank_issues_enabled: false
+contact_links:
+  # SECURITY.md routes anything that makes a claim wrong in the dangerous
+  # direction — under-reporting above all — to a private channel, never to a
+  # public issue.
+  - name: Security report (under-reporting, fail-closed, contract flaw)
+    url: https://github.com/use-assay/Assay/security/advisories/new
+    about: Private channel per SECURITY.md. Use this, not a public issue, if the output makes a claim wrong in the dangerous direction.
+  - name: Security email
+    url: mailto:deekhay7534@gmail.com
+    about: Alternative private channel when the advisory form will not work.

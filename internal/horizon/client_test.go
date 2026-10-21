@@ -11,6 +11,7 @@ package horizon_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -111,6 +112,25 @@ func TestAssetNotFound(t *testing.T) {
 
 	if _, err := c.Asset(context.Background(), "MISSING", "GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA"); !errors.Is(err, horizon.ErrNotFound) {
 		t.Fatalf("Asset error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestAssetMultipleRecordsErrors(t *testing.T) {
+	code, issuer := "AQUA", "GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		// Return two records for the exact code/issuer
+		_, _ = w.Write([]byte(`{"_embedded":{"records":[` + assetJSON(code, issuer) + `,` + assetJSON(code, issuer) + `]}}`))
+	}))
+	t.Cleanup(srv.Close)
+	c := horizon.New(srv.URL)
+
+	asset, err := c.Asset(context.Background(), code, issuer)
+	if asset != nil {
+		t.Fatalf("expected error on multiple records, got asset %+v", asset)
+	}
+	if !errors.Is(err, horizon.ErrMultipleRecords) {
+		t.Fatalf("Asset error = %v, want ErrMultipleRecords", err)
 	}
 }
 
@@ -255,5 +275,9 @@ func (d delayRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 	if d.delay > 0 {
 		time.Sleep(d.delay)
 	}
-	return d.rt.RoundTrip(req)
+	resp, err := d.rt.RoundTrip(req)
+	if err != nil {
+		return nil, fmt.Errorf("round trip: %w", err)
+	}
+	return resp, nil
 }

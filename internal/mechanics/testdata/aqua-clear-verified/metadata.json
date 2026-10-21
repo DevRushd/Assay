@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "subject": "aqua-clear-verified",
+  "why": "no auth flags at all: the issuer has no power over holders, and a reciprocal domain confirms who it is",
+  "files": [
+    {"file": "asset.json", "url": "https://horizon.stellar.org/assets?asset_code=AQUA&asset_issuer=GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA", "captured": "2026-08-10"},
+    {"file": "account.json", "url": "https://horizon.stellar.org/accounts/GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA", "captured": "2026-08-10"},
+    {"file": "stellar.toml", "url": "https://aqua.network/.well-known/stellar.toml", "captured": "2026-08-10"},
+    {"file": "blocked.json", "url": "https://api.stellar.expert/explorer/directory/blocked-domains/aqua.network", "captured": "2026-08-10"},
+    {"file": "directory.json", "url": "https://api.stellar.expert/explorer/directory/GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA", "captured": "2026-08-10"}
+  ],
+  "expected": {
+    "state": "valid",
+    "base": "clear",
+    "severity": "clear",
+    "escalated": false,
+    "undetermined": false,
+    "accountability": "verified",
+    "checks": {
+      "capability": {"severity": "clear"},
+      "mutability": {"severity": "clear"},
+      "sep1-domain": {"severity": "clear"},
+      "reputation": {"severity": "clear", "escalation": true}
+    }
+  }
+}

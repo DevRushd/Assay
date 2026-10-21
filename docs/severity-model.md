@@ -3,6 +3,10 @@
 This is the part of Assay worth arguing about. Reading a flag is trivial and
 deterministic. Deciding what a flag *means* is the whole product.
 
+The vocabulary this page argues with — `clear`, `unevaluated`, `valid`,
+`unknown`, `stale`, `undetermined` — is defined, together with the state each is
+most often confused with, in [the glossary](glossary.md).
+
 ## The problem
 
 `auth_clawback_enabled` lets an issuer confiscate your balance and burn it,
@@ -97,6 +101,52 @@ invariant across every eval fixture and over hand-built escalated subjects,
 with a negative test proving the assertion fires on a deliberately bugged
 finding.
 
+### What a blocklist hit is keyed on
+
+The directory's `malicious`/`unsafe` tags are keyed on the **issuer address**:
+StellarExpert made the association between an address and its reputation, so a
+directory hit needs no further corroboration to escalate.
+
+The malicious-domain blocklist is keyed on a **domain**, and the only domain
+Assay has is the issuer's advertised `home_domain` — a free-text field the
+account controls. Using it as the escalation key has a false-positive and a
+false-negative face, and the decision below was made with both in view.
+
+| State | What Assay sees | What it does |
+| --- | --- | --- |
+| verified | blocklist hit on a domain whose `stellar.toml` reciprocally claims this asset | escalates to critical |
+| unverified | blocklist hit on a domain that has not claimed this asset | escalates to critical, with the unverified link stated in the finding's reasoning |
+| missing | no `home_domain` at all | the lookup cannot be put; reputation is marked `undetermined` and the report names it |
+
+**A hit on an unverified domain still escalates.** A blocklist entry is a
+positive observation from a curated source — the same class of evidence as a
+`malicious` directory tag — and this model never suppresses positive adverse
+evidence. Requiring reciprocal verification before escalating was rejected
+because it introduces a silent false negative: the recorded `REPO` scan
+escalated *only* through the blocklist, on a domain whose toml did not resolve,
+and a verification precondition would have dropped a real scam to `clear`.
+Under-reporting risk is a security issue in this project; over-escalating a
+legitimate issuer is not the mirror image, because an issuer whose advertised
+domain is blocklisted is itself part of the finding. What the report adds is
+honesty about the link: the escalation is stated *with the caveat that the
+domain has not reciprocally claimed the asset*, so a reader is never handed an
+unverified association presented as a confirmed one.
+
+**No `home_domain` is a gap, not a clean result.** With no domain there is
+nothing to key the lookup on, so the blocklist is never read. A hit would
+escalate, which makes the reported severity a floor. The project's rule that
+"we could not check" and "this is fine" must never render the same therefore
+applies, and the reputation finding is marked `undetermined` — which also means
+such a report is not attestable (`attest.FromReport` refuses it, exactly as it
+does for an unreachable source). This is what closes the evasion the issue
+raises: an issuer that clears `home_domain` to dodge the blocklist no longer
+receives a clean, attestable verdict. The consequence is deliberate and stated:
+an issuer that advertises no `home_domain` cannot be checked against the domain
+blocklist, and therefore cannot be attested until the lookup can be keyed on
+something else. Keying it on the directory's curated domain is the fix, and it
+belongs to [#4](https://github.com/use-assay/Assay/issues/4) (directory domain
+versus advertised domain) rather than to this decision.
+
 ## Rule 3: accountability is reported, never discounted
 
 Reciprocal SEP-1 verification produces `verified`, `unverified`, or `unknown`.
@@ -174,6 +224,21 @@ attestation (see [the contract interface](contract-interface.md)), and the
 contract's own range check would reject it as a second backstop. It also never
 appears in eval expectations: an eval subject always has flags to read.
 
+## What stale means
+
+A verdict has three potential lifecycle states: **valid**, **unknown**, and **stale**.
+
+- **`valid`** — A fresh, complete verdict. All required sources answered, flags were evaluated, and the observation is within the freshness policy window.
+- **`unknown`** — A check could not conclude. Either a required source was unreachable (`undetermined`) or flags were never read (`unevaluated`).
+- **`stale`** — The verdict was complete when made, but is now older than the policy window.
+
+Assay learned this distinction through three related failure modes:
+1. An unreachable source once rendered as a clean result (#23).
+2. Clear doubled as not-evaluated (#32).
+3. Stale was unrepresented off-chain, risking an expired verdict being consumed as currently safe (#57).
+
+On-chain, the Soroban example gate already distinguished staleness via `Error::AttestationStale` (`#2`). Off-chain, `Report` now represents `state` (`"valid"`, `"unknown"`, `"stale"`) and `stale` (`true`/`false`) distinctly in JSON. A program reading the report can never confuse an expired clean report with a fresh one. Furthermore, `attest.FromReport` refuses any stale report (`ErrStale`), guaranteeing that an expired verdict cannot be attested as fresh.
+
 `auth_immutable` is deliberately **not** a level. It is not a power over
 holders; it fixes whether the power set can change. Which direction that cuts
 depends entirely on what is already set:
@@ -206,3 +271,4 @@ at all and is a known scam.
 
 Assay scans one specific attack surface. It says so rather than implying
 coverage it does not have.
+- [Temporal Trust Model](temporal.md)

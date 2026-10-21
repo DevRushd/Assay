@@ -94,7 +94,7 @@ func TestNilStatSubjectIsNotAttestable(t *testing.T) {
 	s := &mechanics.Subject{
 		Asset:     mechanics.Asset{Code: "NOPE", Issuer: "GA22IDJNHUMC3XKUCCBFNTQIJOUBWINC5GCXHLJ2V6KZ3OWAXCULNQ7P"},
 		Stat:      nil,
-		FetchedAt: time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC),
+		ScannedAt: time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC),
 	}
 	rep, err := mechanics.NewEngine().Run(context.Background(), s)
 	if err != nil {

@@ -4,14 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/use-assay/assay/internal/mechanics"
 	"github.com/use-assay/assay/internal/scan"
+	"github.com/use-assay/assay/internal/sep1"
 )
 
 func TestParseAsset(t *testing.T) {
@@ -32,6 +35,15 @@ func TestParseAsset(t *testing.T) {
 				t.Errorf("ParseAsset(%q) = %+v", in, a)
 			}
 		}
+		// A credit asset whose code merely happens to be XLM is an ordinary
+		// asset: only an identifier with no issuer half reads as native.
+		a, err := scan.ParseAsset("XLM-" + issuer)
+		if err != nil {
+			t.Fatalf("ParseAsset(\"XLM-%s\"): %v", issuer, err)
+		}
+		if a.Code != "XLM" || a.Issuer != issuer {
+			t.Errorf("ParseAsset(\"XLM-%s\") = %+v, want the code parsed as an ordinary asset", issuer, a)
+		}
 	})
 
 	t.Run("rejected", func(t *testing.T) {
@@ -48,6 +60,27 @@ func TestParseAsset(t *testing.T) {
 		} {
 			if _, err := scan.ParseAsset(in); !errors.Is(err, scan.ErrBadAsset) {
 				t.Errorf("ParseAsset(%q) error = %v, want ErrBadAsset", in, err)
+			}
+		}
+	})
+
+	// The native asset is understood, not malformed: it must be refused with
+	// the documented explanation — no issuer, no authorization flags, never
+	// scanned, never attested — and never with a parse error.
+	t.Run("native", func(t *testing.T) {
+		for _, in := range []string{"native", "Native", "XLM", "xlm", "xLm", "  XLM  "} {
+			_, err := scan.ParseAsset(in)
+			if !errors.Is(err, scan.ErrNativeAsset) {
+				t.Errorf("ParseAsset(%q) error = %v, want ErrNativeAsset", in, err)
+				continue
+			}
+			if errors.Is(err, scan.ErrBadAsset) {
+				t.Errorf("ParseAsset(%q) = %v, want an explanation of the ledger fact, not a parse error", in, err)
+			}
+			for _, want := range []string{"no issuer", "no authorization flags"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("ParseAsset(%q) error = %q, want it to say %q", in, err, want)
+				}
 			}
 		}
 	})
@@ -146,19 +179,17 @@ func TestSubjectRecordsPerSourceFetchTimes(t *testing.T) {
 		t.Fatalf("Subject: %v", err)
 	}
 
-	// Order of operations in Subject: horizon assets, horizon account, toml,
-	// blocked-domains, directory. Each fetch sleeps a different amount, so the
-	// completion times must be strictly increasing in that order — a shared
-	// start-of-scan timestamp cannot satisfy this.
+	// Horizon fetches run sequentially, followed by concurrent post-account fetches.
+	// Delays: dir (10ms) < blocked (20ms) < toml (30ms).
 	seq := []struct {
 		name string
 		at   time.Time
 	}{
 		{"StatFetchedAt (horizon assets)", sub.StatFetchedAt},
 		{"IssuerFetchedAt (horizon account)", sub.IssuerFetchedAt},
-		{"Toml.Doc.FetchedAt (stellar.toml)", sub.Toml.FetchedAt},
-		{"BlockedFetchedAt (blocklist)", sub.BlockedFetchedAt},
 		{"DirectoryFetchedAt (directory)", sub.DirectoryFetchedAt},
+		{"BlockedFetchedAt (blocklist)", sub.BlockedFetchedAt},
+		{"Toml.Doc.FetchedAt (stellar.toml)", sub.Toml.FetchedAt},
 	}
 	for i := 1; i < len(seq); i++ {
 		if !seq[i].at.After(seq[i-1].at) {
@@ -188,15 +219,18 @@ func TestSubjectRecordsPerSourceFetchTimes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !rep.ScannedAt.Equal(sub.ScannedAt) {
+	if !rep.ScannedAt.Time().Equal(sub.ScannedAt) {
 		t.Errorf("Report.ScannedAt = %s, want the scan start %s",
-			rep.ScannedAt.Format(time.RFC3339Nano), sub.ScannedAt.Format(time.RFC3339Nano))
+			rep.ScannedAt.Time().Format(time.RFC3339Nano), sub.ScannedAt.Format(time.RFC3339Nano))
 	}
+	// Evidence times cross the JSON boundary at the canonical whole-second
+	// precision (issue #52), so the comparison truncates the same way the
+	// NewCanonicalTime conversion in the checks does.
 	want := map[string]time.Time{
-		"horizon":                        sub.StatFetchedAt,
-		"stellar.toml":                   sub.Toml.FetchedAt,
-		"stellar.expert/blocked-domains": sub.BlockedFetchedAt,
-		"stellar.expert/directory":       sub.DirectoryFetchedAt,
+		"horizon":                        sub.StatFetchedAt.Truncate(time.Second),
+		"stellar.toml":                   sub.Toml.FetchedAt.Truncate(time.Second),
+		"stellar.expert/blocked-domains": sub.BlockedFetchedAt.Truncate(time.Second),
+		"stellar.expert/directory":       sub.DirectoryFetchedAt.Truncate(time.Second),
 	}
 	for _, ev := range rep.Evidence {
 		wantAt, ok := want[ev.Source]
@@ -207,10 +241,78 @@ func TestSubjectRecordsPerSourceFetchTimes(t *testing.T) {
 		if ev.Attempted {
 			t.Errorf("success evidence for %s is marked Attempted", ev.Source)
 		}
-		if !ev.RetrievedAt.Equal(wantAt) {
+		if !ev.RetrievedAt.Time().Equal(wantAt) {
 			t.Errorf("%s evidence RetrievedAt = %s, want %s (that source's completion time)",
-				ev.Source, ev.RetrievedAt.Format(time.RFC3339Nano), wantAt.Format(time.RFC3339Nano))
+				ev.Source, ev.RetrievedAt.Time().Format(time.RFC3339Nano), wantAt.Format(time.RFC3339Nano))
 		}
+	}
+}
+
+// TestTimeout ensures each source gets its own sub-budget. A slow source does not
+// cause a different source to be reported unavailable, and the timeout is attributed
+// strictly to the slow source.
+func TestTimeout(t *testing.T) {
+	fs := newFakeSources(t)
+	// Slow toml server delays 200ms
+	fs.toml.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(200 * time.Millisecond)
+		_, _ = w.Write([]byte("[[CURRENCIES]]\ncode=\"USDC\"\nissuer=\"" + scanIssuer + "\"\n"))
+	})
+
+	sc := scan.New()
+	sc.FetchTimeout = 50 * time.Millisecond
+	sc.Horizon.BaseURL = fs.horizon.URL
+	sc.Expert.BaseURL = fs.expert.URL
+	sc.Toml.HTTP.Transport = &singleHostTransport{host: strings.TrimPrefix(fs.toml.URL, "http://")}
+
+	sub, err := sc.Subject(context.Background(), mustParse(t, "USDC-"+scanIssuer))
+	if err != nil {
+		t.Fatalf("Subject failed: %v", err)
+	}
+
+	// Slow toml timed out and recorded an error
+	if sub.TomlErr == "" {
+		t.Error("expected TomlErr to be set for slow source")
+	}
+	// The claim carries the canonical failure form, not the raw transport
+	// error: two scanners timing out on the same fetch must record the same
+	// string, or the evidence_hash would differ for the same failure.
+	if sub.TomlErr != sep1.FailureTimeout {
+		t.Errorf("TomlErr = %q, want the canonical %q", sub.TomlErr, sep1.FailureTimeout)
+	}
+
+	// Blocked and Directory finished normally and were not starved
+	if sub.BlockedErr != "" || sub.Blocked == nil {
+		t.Errorf("Blocked source affected by toml timeout: err=%q, val=%+v", sub.BlockedErr, sub.Blocked)
+	}
+	if sub.DirectoryErr != "" {
+		t.Errorf("Directory source affected by toml timeout: err=%q", sub.DirectoryErr)
+	}
+}
+
+// TestConcurrentPostAccountFetches verifies that concurrent post-account fetches
+// produce complete, correctly populated Subject data.
+func TestConcurrentPostAccountFetches(t *testing.T) {
+	fs := newFakeSources(t)
+
+	sc := scan.New()
+	sc.Horizon.BaseURL = fs.horizon.URL
+	sc.Expert.BaseURL = fs.expert.URL
+	sc.Toml.HTTP.Transport = &singleHostTransport{host: strings.TrimPrefix(fs.toml.URL, "http://")}
+
+	sub, err := sc.Subject(context.Background(), mustParse(t, "USDC-"+scanIssuer))
+	if err != nil {
+		t.Fatalf("Subject: %v", err)
+	}
+
+	if sub.Toml == nil || sub.TomlErr != "" {
+		t.Errorf("Toml = %+v, TomlErr = %q", sub.Toml, sub.TomlErr)
+	}
+	if sub.Blocked == nil || sub.BlockedErr != "" {
+		t.Errorf("Blocked = %+v, BlockedErr = %q", sub.Blocked, sub.BlockedErr)
+	}
+	if sub.DirectoryErr != "" {
+		t.Errorf("DirectoryErr = %q", sub.DirectoryErr)
 	}
 }
 
@@ -281,9 +383,9 @@ func TestSubjectFailureEvidenceCarriesAttemptTime(t *testing.T) {
 		if !ev.Attempted {
 			t.Error("failure evidence is not marked Attempted; an attempt is not an answer")
 		}
-		if !ev.RetrievedAt.Equal(sub.BlockedAttemptedAt) {
-			t.Errorf("failure evidence carries %s, want the attempt time %s",
-				ev.RetrievedAt.Format(time.RFC3339Nano), sub.BlockedAttemptedAt.Format(time.RFC3339Nano))
+		if !ev.RetrievedAt.Time().Equal(sub.BlockedAttemptedAt.Truncate(time.Second)) {
+			t.Errorf("failure evidence carries %s, want the attempt time %s (whole-second canonical, issue #52)",
+				ev.RetrievedAt.Time().Format(time.RFC3339Nano), sub.BlockedAttemptedAt.Truncate(time.Second).Format(time.RFC3339Nano))
 		}
 		if !strings.Contains(ev.Claim, "not retrievable") {
 			t.Errorf("failure evidence claim does not read as a failure: %q", ev.Claim)
@@ -291,6 +393,123 @@ func TestSubjectFailureEvidenceCarriesAttemptTime(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("no evidence recorded for the unreachable blocklist")
+	}
+}
+
+// TestCacheHitDoesNotRefreshEvidenceTime is the acceptance test for the
+// honesty half of the cache: a scan served from the reputation cache reports
+// the time the source ORIGINALLY answered, never the time of the scan that
+// reused the answer. A report must never imply its data is fresher than it is.
+//
+// It drives two real scans through the same Scanner, with a real (short) wait
+// between them, so a cache-hit timestamp would be observably later than the
+// original fetch time.
+func TestCacheHitDoesNotRefreshEvidenceTime(t *testing.T) {
+	fs := newFakeSources(t)
+
+	var directoryRequests, blockedRequests int64
+	fs.expert.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/explorer/directory/blocked-domains/"):
+			atomic.AddInt64(&blockedRequests, 1)
+			time.Sleep(blockedDelay)
+			_, _ = w.Write([]byte(`{"domain":"` + scanHomeDom + `","blocked":false}`))
+		case strings.HasPrefix(r.URL.Path, "/explorer/directory/"):
+			atomic.AddInt64(&directoryRequests, 1)
+			time.Sleep(dirDelay)
+			_, _ = w.Write([]byte(`{"address":"` + scanIssuer +
+				`","name":"Centre","domain":"centre.test","tags":["issuer"]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	sc := scan.New() // production defaults: the reputation cache is on
+	sc.Horizon.BaseURL = fs.horizon.URL
+	sc.Expert.BaseURL = fs.expert.URL
+	sc.Toml.HTTP.Transport = &singleHostTransport{host: strings.TrimPrefix(fs.toml.URL, "http://")}
+
+	first, err := sc.Subject(context.Background(), mustParse(t, "USDC-"+scanIssuer))
+	if err != nil {
+		t.Fatalf("first Subject: %v", err)
+	}
+	if first.DirectoryFetchedAt.IsZero() || first.BlockedFetchedAt.IsZero() {
+		t.Fatalf("first scan recorded no fetch times: directory=%s blocklist=%s",
+			first.DirectoryFetchedAt, first.BlockedFetchedAt)
+	}
+
+	// Wall-clock room so that a stamp taken at the second scan would be
+	// strictly later than the first scan's fetch times.
+	time.Sleep(5 * time.Millisecond)
+
+	second, err := sc.Subject(context.Background(), mustParse(t, "USDC-"+scanIssuer))
+	if err != nil {
+		t.Fatalf("second Subject: %v", err)
+	}
+
+	if got := atomic.LoadInt64(&directoryRequests); got != 1 {
+		t.Errorf("directory fetched %d times across two scans, want 1 (the cache did not engage)", got)
+	}
+	if got := atomic.LoadInt64(&blockedRequests); got != 1 {
+		t.Errorf("blocklist fetched %d times across two scans, want 1 (the cache did not engage)", got)
+	}
+
+	// The guarantee, at the Subject level: the fetch times did not move.
+	if !second.DirectoryFetchedAt.Equal(first.DirectoryFetchedAt) {
+		t.Errorf("cache hit re-stamped the directory fetch time: %s -> %s",
+			first.DirectoryFetchedAt.Format(time.RFC3339Nano),
+			second.DirectoryFetchedAt.Format(time.RFC3339Nano))
+	}
+	if !second.BlockedFetchedAt.Equal(first.BlockedFetchedAt) {
+		t.Errorf("cache hit re-stamped the blocklist fetch time: %s -> %s",
+			first.BlockedFetchedAt.Format(time.RFC3339Nano),
+			second.BlockedFetchedAt.Format(time.RFC3339Nano))
+	}
+	// And they are OLDER than the second scan, which is the honest statement:
+	// this scan reused data rather than retrieving it.
+	if !second.DirectoryFetchedAt.Before(second.ScannedAt) {
+		t.Errorf("directory fetch time %s is not before the second scan start %s; "+
+			"the report claims data it did not fetch",
+			second.DirectoryFetchedAt.Format(time.RFC3339Nano),
+			second.ScannedAt.Format(time.RFC3339Nano))
+	}
+	if !second.BlockedFetchedAt.Before(second.ScannedAt) {
+		t.Errorf("blocklist fetch time %s is not before the second scan start %s",
+			second.BlockedFetchedAt.Format(time.RFC3339Nano),
+			second.ScannedAt.Format(time.RFC3339Nano))
+	}
+
+	// The same guarantee where it matters most: the evidence a report and an
+	// evidence_hash are built from carries the original time, not the scan's.
+	rep, err := sc.Engine.Run(context.Background(), second)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	// Evidence crosses the JSON boundary at whole-second precision (issue #52),
+	// so the comparison truncates the source's fetch time the same way.
+	want := map[string]time.Time{
+		"stellar.expert/directory":       first.DirectoryFetchedAt.Truncate(time.Second),
+		"stellar.expert/blocked-domains": first.BlockedFetchedAt.Truncate(time.Second),
+	}
+	seen := map[string]bool{}
+	for _, ev := range rep.Evidence {
+		at, ok := want[ev.Source]
+		if !ok {
+			continue
+		}
+		seen[ev.Source] = true
+		if ev.Attempted {
+			t.Errorf("%s evidence marked Attempted on a cache hit", ev.Source)
+		}
+		if !ev.RetrievedAt.Time().Equal(at) {
+			t.Errorf("%s evidence RetrievedAt = %s, want the original fetch time %s",
+				ev.Source, ev.RetrievedAt.Time().Format(time.RFC3339Nano), at.Format(time.RFC3339Nano))
+		}
+	}
+	for source := range want {
+		if !seen[source] {
+			t.Errorf("no evidence recorded for %s; the assertion above proved nothing", source)
+		}
 	}
 }
 
@@ -305,7 +524,89 @@ func (t *singleHostTransport) RoundTrip(req *http.Request) (*http.Response, erro
 	u.Scheme = "http"
 	u.Host = t.host
 	req.URL = &u
-	return http.DefaultTransport.RoundTrip(req)
+	resp, err := http.DefaultTransport.RoundTrip(req)
+	if err != nil {
+		return nil, fmt.Errorf("round trip: %w", err)
+	}
+	return resp, nil
+}
+
+// TestSubjectRecordsSkippedBlocklistWhenNoHomeDomain covers the missing state
+// at the scanner: with no home_domain there is no domain to key the blocklist
+// on, so the lookup must not be attempted and the skip must be recorded rather
+// than left as an empty result. An empty result reads downstream as "the lookup
+// ran and found no entry" — and a blocklist hit escalates severity, so an
+// unread lookup must not be allowed to look like a clean one.
+func TestSubjectRecordsSkippedBlocklistWhenNoHomeDomain(t *testing.T) {
+	horizonSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/assets":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"_embedded": map[string]any{"records": []map[string]any{{
+					"asset_type":   "credit_alphanum4",
+					"asset_code":   "USDC",
+					"asset_issuer": scanIssuer,
+					"flags":        map[string]bool{},
+				}}},
+			})
+		case "/accounts/" + scanIssuer:
+			// No home_domain at all — the VELO shape.
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"account_id": scanIssuer,
+				"flags":      map[string]bool{},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(horizonSrv.Close)
+
+	var blockedRequests int32
+	expertSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/explorer/directory/blocked-domains/") {
+			atomic.AddInt32(&blockedRequests, 1)
+		}
+		// The directory answers 200-with-empty-body for an unlisted address.
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	t.Cleanup(expertSrv.Close)
+
+	sc := scan.New()
+	sc.Horizon.BaseURL = horizonSrv.URL
+	sc.Expert.BaseURL = expertSrv.URL
+
+	sub, err := sc.Subject(context.Background(), mustParse(t, "USDC-"+scanIssuer))
+	if err != nil {
+		t.Fatalf("Subject: %v", err)
+	}
+	if sub.BlockedSkipped == "" {
+		t.Fatal("no home_domain did not record that the blocklist lookup was skipped")
+	}
+	if sub.Blocked != nil || sub.BlockedErr != "" {
+		t.Fatalf("skipped lookup left Blocked=%+v BlockedErr=%q, want both empty", sub.Blocked, sub.BlockedErr)
+	}
+	if got := atomic.LoadInt32(&blockedRequests); got != 0 {
+		t.Fatalf("the blocklist endpoint was queried %d times with no domain to key on", got)
+	}
+
+	// The gap must reach the report as undetermined, not as a clean result.
+	rep, err := sc.Engine.Run(context.Background(), sub)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !rep.Undetermined {
+		t.Fatal("a scan whose blocklist could not be consulted must be undetermined")
+	}
+	var named bool
+	for _, id := range rep.UndeterminedChecks {
+		if id == "reputation" {
+			named = true
+		}
+	}
+	if !named {
+		t.Fatalf("reputation not named in UndeterminedChecks: %v", rep.UndeterminedChecks)
+	}
 }
 
 func mustParse(t *testing.T, s string) mechanics.Asset {

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "subject": "usdc-revocable-regulated",
+  "why": "a real regulated stablecoin that legitimately uses auth_revocable. It must report freeze-capable (medium) on the strength of the flag alone. circle.com does not serve a stellar.toml, so the reciprocal claim genuinely fails and the unverified bit is set.",
+  "files": [
+    {"file": "asset.json", "url": "https://horizon.stellar.org/assets?asset_code=USDC&asset_issuer=GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN", "captured": "2026-08-10"},
+    {"file": "account.json", "url": "https://horizon.stellar.org/accounts/GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN", "captured": "2026-08-10"},
+    {"file": "stellar.toml.status", "url": "https://circle.com/.well-known/stellar.toml", "captured": "2026-08-10", "note": "the endpoint did not answer 200 at capture time (HTTP 404), so reciprocal SEP-1 verification fails by the letter of the spec"},
+    {"file": "blocked.json", "url": "https://api.stellar.expert/explorer/directory/blocked-domains/circle.com", "captured": "2026-08-10"},
+    {"file": "directory.json", "url": "https://api.stellar.expert/explorer/directory/GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN", "captured": "2026-08-10"}
+  ],
+  "expected": {
+    "state": "valid",
+    "base": "medium",
+    "severity": "medium",
+    "escalated": false,
+    "undetermined": false,
+    "accountability": "unverified",
+    "checks": {
+      "capability": {"severity": "medium", "mechanics": ["auth_revocable"]},
+      "mutability": {"severity": "clear"},
+      "sep1-domain": {"severity": "clear", "mechanics": ["domain_unverified"]},
+      "reputation": {"severity": "clear", "escalation": true}
+    }
+  }
+}

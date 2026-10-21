@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "subject": "shx-clear-flagslocked",
+  "why": "no auth flags AND auth_immutable: the issuer can never add freeze or clawback later",
+  "files": [
+    {"file": "asset.json", "url": "https://horizon.stellar.org/assets?asset_code=SHX&asset_issuer=GDSTRSHXHGJ7ZIVRBXEYE5Q74XUVCUSEKEBR7UCHEUUEK72N7I7KJ6JH", "captured": "2026-08-10"},
+    {"file": "account.json", "url": "https://horizon.stellar.org/accounts/GDSTRSHXHGJ7ZIVRBXEYE5Q74XUVCUSEKEBR7UCHEUUEK72N7I7KJ6JH", "captured": "2026-08-10"},
+    {"file": "stellar.toml", "url": "https://stronghold.co/.well-known/stellar.toml", "captured": "2026-08-10"},
+    {"file": "blocked.json", "url": "https://api.stellar.expert/explorer/directory/blocked-domains/stronghold.co", "captured": "2026-08-10"},
+    {"file": "directory.json", "url": "https://api.stellar.expert/explorer/directory/GDSTRSHXHGJ7ZIVRBXEYE5Q74XUVCUSEKEBR7UCHEUUEK72N7I7KJ6JH", "captured": "2026-08-10"}
+  ],
+  "expected": {
+    "state": "valid",
+    "base": "clear",
+    "severity": "clear",
+    "escalated": false,
+    "undetermined": false,
+    "accountability": "verified",
+    "checks": {
+      "capability": {"severity": "clear"},
+      "mutability": {"severity": "clear", "mechanics": ["auth_immutable"]},
+      "sep1-domain": {"severity": "clear"},
+      "reputation": {"severity": "clear", "escalation": true}
+    }
+  }
+}

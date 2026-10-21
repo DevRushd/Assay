@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "subject": "usdz-clawback-regulated",
+  "why": "the confirmed-legitimate clawback control asset (docs/eval.md coverage-gaps). USDZ (Zeam Money, zeam.money) carries both auth_revocable and auth_clawback_enabled, so capability alone puts it at high — and it must NOT be escalated: the domain publishes a reciprocal stellar.toml that names the exact issuer, the directory tag is 'issuer' (not 'malicious'), and no blocklist entry exists. The severity model's central claim is that it treats legitimate clawback fairly; this subject is the only one in the set that measures that claim.",
+  "files": [
+    {"file": "asset.json", "url": "https://horizon.stellar.org/assets?asset_code=USDZ&asset_issuer=GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR", "captured": "2026-09-27"},
+    {"file": "account.json", "url": "https://horizon.stellar.org/accounts/GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR", "captured": "2026-09-27"},
+    {"file": "stellar.toml", "url": "https://zeam.money/.well-known/stellar.toml", "captured": "2026-09-27", "note": "abridged to the USDZ CURRENCIES entry, the DOCUMENTATION block, and the header — the full file lists many other assets and validators irrelevant to this subject"},
+    {"file": "blocked.json", "url": "https://api.stellar.expert/explorer/directory/blocked-domains/zeam.money", "captured": "2026-09-27"},
+    {"file": "directory.json", "url": "https://api.stellar.expert/explorer/directory/GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR", "captured": "2026-09-27"}
+  ],
+  "expected": {
+    "state": "valid",
+    "base": "high",
+    "severity": "high",
+    "escalated": false,
+    "undetermined": false,
+    "accountability": "verified",
+    "checks": {
+      "capability": {"severity": "high", "mechanics": ["auth_revocable", "auth_clawback_enabled"]},
+      "mutability": {"severity": "clear"},
+      "sep1-domain": {"severity": "clear"},
+      "reputation": {"severity": "clear", "escalation": true}
+    }
+  }
+}

@@ -2,11 +2,14 @@
 # Checks docs/deployment.md against live chain state.
 #
 # That document is the record of what is deployed: the registry and gate
-# addresses, the three gate instances with their wasm hashes, and the attested
-# assets with their severity, flags and evidence hash. It has drifted before —
-# the docs named a superseded gate after the redeploy, and an unexplained
-# duplicate instance existed before anything recorded it — and drift is
-# silent, because a stale document reads exactly like a correct one.
+# addresses, the three gate instances with their wasm hashes, and the ten
+# attestations with their severity, flags, evidence hash and preimage encoding.
+# The preimage column is checked for presence and vocabulary (v1/v2/v3/v4) and for
+# agreement between the two tables, but not against the chain — the chain
+# stores only the hash. It has drifted
+# before — the docs named a superseded gate after the redeploy, and an
+# unexplained duplicate instance existed before anything recorded it — and
+# drift is silent, because a stale document reads exactly like a correct one.
 #
 # This script reads the tables and the network and reports the difference. It
 # only ever reads: it never edits docs/deployment.md and never submits a
@@ -16,29 +19,29 @@
 #   scripts/check-deployment.sh [--rpc URL] [--timeout SECS] [--deployment PATH]
 #
 #   --rpc URL         Soroban JSON-RPC endpoint
-#                       (default $ASSAY_RPC_URL, else the public testnet
-#                       endpoint docs/deployment.md describes).
+#                     (default $ASSAY_RPC_URL, else the public testnet
+#                     endpoint docs/deployment.md describes).
 #   --timeout SECS    per-request timeout (default $ASSAY_RPC_TIMEOUT or 15).
-#                       An endpoint that hangs must yield UNKNOWN promptly
-#                       rather than block the run forever.
+#                     An endpoint that hangs must yield UNKNOWN promptly
+#                     rather than block the run forever.
 #   --deployment PATH markdown file holding the tables
-#                       (default docs/deployment.md). A copy can be passed to
-#                       exercise the checker without touching the real file.
+#                     (default docs/deployment.md). A copy can be passed to
+#                     exercise the checker without touching the real file.
 #
 # Pointing --rpc at an unreachable address (e.g. http://127.0.0.1:1) is how
 # the inconclusive path is exercised, the same trick scripts/reproducibility.sh
 # documents for its own source overrides.
 #
 # Outcomes, one per check:
-#   valid      the documented value matches chain state.
-#   invalid    a mismatch, reported with BOTH values. For an address, "no
-#              contract at this address" is the on-chain value.
-#   absent     a documented attestation with no entry on chain — the expected
-#              outcome for an archived or withdrawn attestation. Reported
-#              distinctly from a mismatch, and never as a match.
-#   unknown    the RPC was unreachable, timed out, or answered with an error.
-#              Inconclusive by definition: counted as neither a match nor a
-#              mismatch, and never as a pass.
+#   valid    the documented value matches chain state.
+#   invalid  a mismatch, reported with BOTH values. For an address, "no
+#            contract at this address" is the on-chain value.
+#   absent   a documented attestation with no entry on chain — the expected
+#            outcome for an archived or withdrawn attestation. Reported
+#            distinctly from a mismatch, and never as a match.
+#   unknown  the RPC was unreachable, timed out, or answered with an error.
+#            Inconclusive by definition: counted as neither a match nor a
+#            mismatch, and never as a pass.
 #
 # Exit codes:
 #   0  every check valid.
@@ -117,7 +120,6 @@ fi
 
 python3 - "$RPC" "$TIMEOUT" "$DEPLOYMENT" <<'PY'
 import base64
-import binascii
 import json
 import re
 import sys
@@ -127,6 +129,14 @@ RPC, TIMEOUT, DEPLOYMENT = sys.argv[1], int(sys.argv[2]), sys.argv[3]
 CONTRACT_RE = re.compile(r"C[A-Z2-7]{55}\Z")
 CODE_RE = re.compile(r"[A-Z0-9]{1,12}\Z")
 ELLIPSIS = ("\u2026", "...")
+
+# ---------------------------------------------------------------------------
+# Abbreviated values. docs/deployment.md writes long hashes and addresses as
+# prefix…suffix, or a bare prefix, and writes a bare prefix when the same
+# value appears in full elsewhere in the document. A check therefore matches
+# when the on-chain value satisfies the documented abbreviation — the same
+# rule scripts/reproducibility.sh applies to evidence hashes.
+# ---------------------------------------------------------------------------
 
 
 def fragment_matches(actual, expected):
@@ -149,6 +159,22 @@ def wasm_fragment(cell):
 def leading_int(cell):
     match = re.search(r"\d+", cell)
     return int(match.group()) if match else None
+
+
+def preimage_column(header):
+    """The zero-based index of the `Preimage` column, or None."""
+    return header.index("Preimage") if "Preimage" in header else None
+
+
+def set_preimage(entry, code, value):
+    """Records ONE asset's preimage encoding, refusing a disagreement between
+    the two tables that document it."""
+    if value in (None, ""):
+        return
+    recorded = entry.get("preimage")
+    if recorded is not None and recorded != value:
+        die(f"asset {code} names preimage {recorded} in one table and {value} in another")
+    entry["preimage"] = value
 
 
 def strkey_contract(digest_hex):
@@ -223,16 +249,21 @@ with open(DEPLOYMENT, encoding="utf-8") as handle:
                 if len(row) >= 4 and CONTRACT_RE.match(row[0]):
                     instances.append({"addr": row[0], "wasm": row[2], "bound": row[3]})
         elif "Asset" in header[0] and "Issuer" in head and "SAC" in head:
+            preimage_col = preimage_column(header)
             for row in rows:
                 if len(row) >= 4 and CODE_RE.match(row[0]):
-                    assets.setdefault(row[0], {}).update(sac=row[2], evidence=row[3])
+                    entry = assets.setdefault(row[0], {})
+                    entry.update(sac=row[2], evidence=row[3])
+                    if preimage_col is not None and preimage_col < len(row):
+                        set_preimage(entry, row[0], row[preimage_col])
         elif "Asset" in header[0] and "Severity" in head and "Flags" in head:
+            preimage_col = preimage_column(header)
             for row in rows:
                 if len(row) >= 3 and CODE_RE.match(row[0]):
-                    assets.setdefault(row[0], {}).update(
-                        severity=leading_int(row[1]),
-                        flags=leading_int(row[2]),
-                    )
+                    entry = assets.setdefault(row[0], {})
+                    entry.update(severity=leading_int(row[1]), flags=leading_int(row[2]))
+                    if preimage_col is not None and preimage_col < len(row):
+                        set_preimage(entry, row[0], row[preimage_col])
         elif len(header) == 2 and "Asset" not in head:
             # The two live-address tables: a bolded row names the contract and
             # the next "Wasm hash" row belongs to it.
@@ -255,31 +286,26 @@ for label, entry in registry_tables.items():
     if entry.get("addr") and CONTRACT_RE.match(entry["addr"]):
         contracts[entry["addr"]] = {"wasm": entry.get("wasm"), "bound": None, "label": label}
 for inst in instances:
-    entry = contracts.setdefault(
-        inst["addr"],
-        {"wasm": None, "bound": None, "label": f"instance {inst['addr'][:8]}…"},
-    )
+    entry = contracts.setdefault(inst["addr"],
+                                 {"wasm": None, "bound": None, "label": f"instance {inst['addr'][:8]}…"})
     if inst["wasm"] and (not entry["wasm"] or len(inst["wasm"]) > len(entry["wasm"])):
         entry["wasm"] = inst["wasm"]
     if inst["bound"]:
         entry["bound"] = inst["bound"]
 
-registry_addr = next(
-    (addr for addr, e in contracts.items() if e["label"] == "registry"),
-    None,
-)
+PREIMAGE_VERSIONS = ("v1", "v2", "v3", "v4")
+
+registry_addr = next((addr for addr, e in contracts.items() if e["label"] == "registry"), None)
 for code, entry in assets.items():
-    for field in ("severity", "flags", "sac", "evidence"):
+    for field in ("severity", "flags", "sac", "evidence", "preimage"):
         if entry.get(field) in (None, ""):
-            die(
-                f"asset {code} has no documented {field}; the tables in "
-                f"{DEPLOYMENT} may have changed"
-            )
+            die(f"asset {code} has no documented {field}; the tables in {DEPLOYMENT} may have changed")
+    if entry["preimage"] not in PREIMAGE_VERSIONS:
+        die(f"asset {code} names an unknown preimage encoding "
+            f"{entry['preimage']!r}; expected one of {', '.join(PREIMAGE_VERSIONS)}")
 if not contracts or not assets or registry_addr is None:
-    die(
-        f"parsed {len(contracts)} contracts and {len(assets)} assets from "
-        f"{DEPLOYMENT}; the table format may have changed"
-    )
+    die(f"parsed {len(contracts)} contracts and {len(assets)} assets from {DEPLOYMENT}; "
+        "the table format may have changed")
 
 # ---------------------------------------------------------------------------
 # XDR, built by hand. These are the bytes `stellar xdr encode --type ScVal`
@@ -324,22 +350,18 @@ def scval_safety_key(sac):
     """The key the registry stores an attestation under:
     vec[ symbol("Safety"), address(<SAC>) ] — the shape docs/deployment.md
     prints when it explains extending one entry by hand."""
-    return (
-        u32(SCV_VEC) + u32(1) + u32(2)
-        + scval_symbol("Safety") + scval_contract_address(sac)
-    )
+    return (u32(SCV_VEC) + u32(1) + u32(2)
+            + scval_symbol("Safety") + scval_contract_address(sac))
 
 
 def ledger_data_key(contract, key_scval):
     """LedgerKey::CONTRACT_DATA. The ScAddress is a fixed-size union arm and
     so carries no length prefix, matching the bytes `stellar xdr encode` emits
     for the key docs/deployment.md prints."""
-    return (
-        u32(LEDGER_KEY_CONTRACT_DATA)
-        + u32(1) + contract_hash(contract)
-        + key_scval
-        + u32(DURABILITY_PERSISTENT)
-    )
+    return (u32(LEDGER_KEY_CONTRACT_DATA)
+            + u32(1) + contract_hash(contract)
+            + key_scval
+            + u32(DURABILITY_PERSISTENT))
 
 
 class Reader:
@@ -439,11 +461,9 @@ for addr, entry in sorted(contracts.items()):
     if entry["bound"]:
         checks.append((f"registry-binding {label}", "bound", entry["bound"], instance_key))
 for code, entry in sorted(assets.items()):
-    checks.append(
-        (f"attestation {code}", "attestation",
-         (entry["severity"], entry["flags"], entry["evidence"]),
-         ledger_data_key(registry_addr, scval_safety_key(entry["sac"])))
-    )
+    checks.append((f"attestation {code}", "attestation",
+                   (entry["severity"], entry["flags"], entry["evidence"], entry["preimage"]),
+                   ledger_data_key(registry_addr, scval_safety_key(entry["sac"]))))
 
 keys = {}
 for name, kind, expected, key in checks:
@@ -452,15 +472,11 @@ key_list = list(keys)
 
 
 def rpc(method, params):
-    body = json.dumps({
-        "jsonrpc": "2.0", "id": 1, "method": method, "params": params,
-    }).encode()
-    request = urllib.request.Request(
-        RPC, data=body, headers={
-            "Content-Type": "application/json",
-            "User-Agent": "assay-check-deployment (+https://github.com/use-assay/Assay)",
-        },
-    )
+    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
+    request = urllib.request.Request(RPC, data=body, headers={
+        "Content-Type": "application/json",
+        "User-Agent": "assay-check-deployment (+https://github.com/use-assay/Assay)",
+    })
     with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
         payload = json.loads(response.read().decode())
     if "error" in payload:
@@ -483,12 +499,9 @@ def report(outcome, name, detail):
 
 def finish():
     print()
-    print(
-        f"check-deployment: {len(checks)} checks — {results['valid']} valid, "
-        f"{results['invalid']} invalid, {results['absent']} absent, {results['unknown']} unknown "
-        f"(rpc {RPC})",
-        file=sys.stderr,
-    )
+    print(f"check-deployment: {len(checks)} checks — {results['valid']} valid, "
+          f"{results['invalid']} invalid, {results['absent']} absent, {results['unknown']} unknown "
+          f"(rpc {RPC})", file=sys.stderr)
     if findings:
         print("", file=sys.stderr)
         print("FINDINGS (documented value vs on-chain value):", file=sys.stderr)
@@ -505,7 +518,7 @@ def finish():
     if inconclusives:
         print("result: INCONCLUSIVE", file=sys.stderr)
         sys.exit(2)
-    print("result: PASS — every documented value matches the chain", file=sys.stderr)
+    print(f"result: PASS — every documented value matches the chain", file=sys.stderr)
     sys.exit(0)
 
 
@@ -531,12 +544,10 @@ entries, undecodable = {}, set()
 for entry in result.get("entries", []):
     try:
         entries[entry["key"]] = read_contract_data_entry(entry["xdr"])
-    except (ValueError, KeyError, IndexError, binascii.Error) as exc:
+    except (ValueError, KeyError, IndexError, base64.binascii.Error) as exc:
         undecodable.add(entry["key"])
-        print(
-            f"check-deployment: could not decode the entry {entry['key'][:24]}… ({exc})",
-            file=sys.stderr,
-        )
+        print(f"check-deployment: could not decode the entry {entry['key'][:24]}… ({exc})",
+              file=sys.stderr)
 
 for key, group in keys.items():
     if key in undecodable:
@@ -548,16 +559,12 @@ for key, group in keys.items():
         if value is None:
             # Nothing at this key on chain.
             if kind == "attestation":
-                report(
-                    "absent", name,
-                    f"documented severity {expected[0]}, flags {expected[1]}, evidence "
-                    f"{expected[2]}; no attestation entry on chain",
-                )
+                report("absent", name,
+                       f"documented severity {expected[0]}, flags {expected[1]}, evidence "
+                       f"{expected[2]}, preimage {expected[3]}; no attestation entry on chain")
             else:
-                report(
-                    "invalid", name,
-                    f"documented {expected}; on-chain: no contract at this address",
-                )
+                report("invalid", name,
+                       f"documented {expected}; on-chain: no contract at this address")
             continue
 
         if kind == "address":
@@ -568,10 +575,7 @@ for key, group in keys.items():
             if actual and fragment_matches(actual, expected):
                 report("valid", name, f"{expected}")
             else:
-                report(
-                    "invalid", name,
-                    f"documented {expected}; on-chain {actual or 'no executable'}",
-                )
+                report("invalid", name, f"documented {expected}; on-chain {actual or 'no executable'}")
 
         elif kind == "bound":
             # The example gate's constructor argument lives in its instance
@@ -591,31 +595,25 @@ for key, group in keys.items():
                     if tag == "contract":
                         bound = strkey_contract(digest.hex())
             if bound is None:
-                report(
-                    "invalid", name,
-                    f"documented registry {expected}; on-chain: the contract's instance storage "
-                    "names no registry",
-                )
+                report("invalid", name,
+                       f"documented registry {expected}; on-chain: the contract's instance storage "
+                       "names no registry")
             elif fragment_matches(bound, expected):
                 report("valid", name, f"{expected}")
             else:
                 report("invalid", name, f"documented {expected}; on-chain {bound}")
 
         else:  # attestation
-            stored = {
-                key_scval.get("symbol"): val_scval
-                for key_scval, val_scval in (value.get("map") or [])
-            }
+            stored = {key_scval.get("symbol"): val_scval
+                      for key_scval, val_scval in (value.get("map") or [])}
             chain_severity = stored.get("severity", {}).get("u32")
             chain_flags = stored.get("flags", {}).get("u32")
             chain_evidence = stored.get("evidence_hash", {}).get("bytes")
-            doc_severity, doc_flags, doc_evidence = expected
+            doc_severity, doc_flags, doc_evidence, doc_preimage = expected
             if chain_severity is None and not chain_evidence:
-                report(
-                    "absent", name,
-                    f"documented severity {doc_severity}, flags {doc_flags}, evidence "
-                    f"{doc_evidence}; the entry on chain holds no attestation",
-                )
+                report("absent", name,
+                       f"documented severity {doc_severity}, flags {doc_flags}, evidence "
+                       f"{doc_evidence}, preimage {doc_preimage}; the entry on chain holds no attestation")
                 continue
             problems = []
             if chain_severity != doc_severity:
@@ -623,16 +621,13 @@ for key, group in keys.items():
             if chain_flags != doc_flags:
                 problems.append(f"flags documented {doc_flags} vs on-chain {chain_flags}")
             if not chain_evidence or not fragment_matches(chain_evidence, doc_evidence):
-                problems.append(
-                    f"evidence_hash documented {doc_evidence} vs on-chain {chain_evidence}"
-                )
+                problems.append(f"evidence_hash documented {doc_evidence} vs on-chain {chain_evidence}")
             if problems:
                 report("invalid", name, "; ".join(problems))
             else:
-                report(
-                    "valid", name,
-                    f"severity {doc_severity}, flags {doc_flags}, evidence {doc_evidence}",
-                )
+                report("valid", name,
+                       f"severity {doc_severity}, flags {doc_flags}, evidence {doc_evidence}, "
+                       f"preimage {doc_preimage}")
 
 finish()
 PY

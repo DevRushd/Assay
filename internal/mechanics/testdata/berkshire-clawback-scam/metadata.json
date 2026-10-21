@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "subject": "berkshire-clawback-scam",
+  "why": "impersonation asset with clawback: capability alone puts it at high, and the curated malicious tag escalates it to critical",
+  "files": [
+    {"file": "asset.json", "url": "https://horizon.stellar.org/assets?asset_code=BERKSHIRE&asset_issuer=GA22QHSHQEHDJS2ZOINSC77XPPQ24G5EFRJGVEIZLKC5FAW3PQ5XNSDQ", "captured": "2026-08-10"},
+    {"file": "account.json", "url": "https://horizon.stellar.org/accounts/GA22QHSHQEHDJS2ZOINSC77XPPQ24G5EFRJGVEIZLKC5FAW3PQ5XNSDQ", "captured": "2026-08-10"},
+    {"file": "stellar.toml.status", "url": "https://nasdaq.finance/.well-known/stellar.toml", "captured": "2026-08-10", "note": "the endpoint did not answer at capture time (HTTP 000), so reciprocal SEP-1 verification fails"},
+    {"file": "blocked.json", "url": "https://api.stellar.expert/explorer/directory/blocked-domains/nasdaq.finance", "captured": "2026-08-10"},
+    {"file": "directory.json", "url": "https://api.stellar.expert/explorer/directory/GA22QHSHQEHDJS2ZOINSC77XPPQ24G5EFRJGVEIZLKC5FAW3PQ5XNSDQ", "captured": "2026-08-10"}
+  ],
+  "expected": {
+    "state": "valid",
+    "base": "high",
+    "severity": "critical",
+    "escalated": true,
+    "undetermined": false,
+    "accountability": "unverified",
+    "checks": {
+      "capability": {"severity": "high", "mechanics": ["auth_revocable", "auth_clawback_enabled"]},
+      "mutability": {"severity": "clear"},
+      "sep1-domain": {"severity": "clear", "mechanics": ["domain_unverified"]},
+      "reputation": {"severity": "critical", "escalation": true, "mechanics": ["blocklisted"]}
+    }
+  }
+}

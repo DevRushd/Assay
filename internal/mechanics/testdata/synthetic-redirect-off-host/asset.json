@@ -1,0 +1,30 @@
+{
+  "_links": {
+    "toml": {
+      "href": "https://redirect.example/.well-known/stellar.toml"
+    }
+  },
+  "asset_type": "credit_alphanum4",
+  "asset_code": "AQUA",
+  "asset_issuer": "GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA",
+  "paging_token": "AQUA_GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA_credit_alphanum4",
+  "num_claimable_balances": 0,
+  "num_liquidity_pools": 0,
+  "num_contracts": 0,
+  "accounts": {
+    "authorized": 140000,
+    "authorized_to_maintain_liabilities": 0,
+    "unauthorized": 0
+  },
+  "balances": {
+    "authorized": "100000000.0000000",
+    "authorized_to_maintain_liabilities": "0.0000000",
+    "unauthorized": "0.0000000"
+  },
+  "flags": {
+    "auth_required": false,
+    "auth_revocable": false,
+    "auth_immutable": false,
+    "auth_clawback_enabled": false
+  }
+}

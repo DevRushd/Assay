@@ -8,7 +8,7 @@
   :root {
     --bg: #ffffff; --fg: #16181d; --muted: #5c6370; --line: #e2e5ea;
     --panel: #f7f8fa; --accent: #2b5fd9;
-    --clear: #1f7a4d; --low: #6b7280; --medium: #b06a00;
+    --clear: #1f7a4d; --low: #6b7280; --medium: #a35f00;
     --high: #c2410c; --critical: #b91c1c;
   }
   @media (prefers-color-scheme: dark) {
@@ -26,17 +26,27 @@
   }
   main { max-width: 820px; margin: 0 auto; }
   h1 { font-size: 1.5rem; margin: 0 0 .25rem; letter-spacing: -.01em; }
+  h2 { font-size: 1.05rem; margin: 1.5rem 0 .5rem; }
   .tagline { color: var(--muted); margin: 0 0 1.5rem; }
-  form { display: flex; gap: .5rem; flex-wrap: wrap; }
+  form { display: flex; gap: .5rem; flex-wrap: wrap; align-items: flex-end; }
+  .field { flex: 1 1 24rem; }
+  label { display: block; margin-bottom: .35rem; font-size: .8rem; font-weight: 700;
+          letter-spacing: .02em; color: var(--muted); }
   input {
-    flex: 1 1 24rem; padding: .6rem .7rem; font: inherit; font-family: ui-monospace, monospace;
+    width: 100%; padding: .6rem .7rem; font: inherit; font-family: ui-monospace, monospace;
     background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px;
   }
   button {
     padding: .6rem 1.1rem; font: inherit; font-weight: 600; cursor: pointer;
-    background: var(--accent); color: #fff; border: 0; border-radius: 6px;
+    background: var(--accent); color: var(--bg); border: 0; border-radius: 6px;
   }
   button:disabled { opacity: .6; cursor: progress; }
+
+  /* Keyboard focus must stay visible on every control and link, in both
+     colour schemes; the outline colour is the palette accent, which meets
+     WCAG AA against the page background. */
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
   .examples { color: var(--muted); font-size: .85rem; margin: .6rem 0 0; }
   .examples button {
     background: none; color: var(--accent); border: 0; padding: 0 .35rem;
@@ -57,7 +67,6 @@
   .sev-critical { color: var(--critical); }
   .note { color: var(--muted); font-size: .85rem; margin-top: .4rem; }
 
-  h3 { font-size: .95rem; margin: 1.5rem 0 .5rem; }
   .finding { border: 1px solid var(--line); border-left: 3px solid var(--line);
              border-radius: 6px; padding: .8rem 1rem; margin-bottom: .7rem; }
   .finding.sev-high, .finding.sev-critical { border-left-color: var(--high); }
@@ -74,6 +83,20 @@
   a { color: var(--accent); }
   .err { border: 1px solid var(--critical); color: var(--critical);
          border-radius: 6px; padding: .8rem 1rem; margin-top: 1.5rem; }
+  .err.banner { border-color: var(--medium); color: var(--medium); background: var(--panel); }
+
+  /* Observation history. An empty history, a single observation, and a
+     truncated one are three different answers and are rendered distinctly. */
+  .history { margin-top: 2rem; }
+  .history-list { margin-top: .5rem; }
+  .obs { border: 1px solid var(--line); border-radius: 6px; padding: .6rem .8rem;
+         background: var(--panel); }
+  .obs-head { display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; }
+  .obs .when { font-family: ui-monospace, monospace; }
+  .obs .meta { color: var(--muted); font-size: .85rem; margin-top: .25rem; }
+  .transition { border-left: 3px solid var(--line); margin: .4rem 0 .4rem .8rem;
+                padding: .25rem .8rem; color: var(--muted); font-size: .85rem; }
+  .transition.state-unknown, .transition.state-missing { border-left-color: var(--medium); color: var(--medium); }
   footer { margin-top: 2.5rem; color: var(--muted); font-size: .8rem;
            border-top: 1px solid var(--line); padding-top: 1rem; }
 </style>
@@ -84,8 +107,11 @@
   <p class="tagline">Can the issuer of this asset freeze or take your balance? Answered from the ledger's own rules.</p>
 
   <form id="f">
-    <input id="asset" name="asset" spellcheck="false" autocomplete="off"
-           placeholder="CODE-GISSUER…" aria-label="Asset (CODE-ISSUER)">
+    <div class="field">
+      <label for="asset">Asset (CODE-ISSUER)</label>
+      <input id="asset" name="asset" spellcheck="false" autocomplete="off"
+             placeholder="CODE-GISSUER…">
+    </div>
     <button id="go" type="submit">Scan</button>
   </form>
   <p class="examples">Try:
@@ -93,7 +119,7 @@
     <button type="button" class="ex" data-a="AQUA-GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA">AQUA</button>
   </p>
 
-  <div id="out"></div>
+  <div id="out" aria-live="polite"></div>
 
   <footer>
     Severity describes issuer <strong>capability</strong> only and is never adjusted
@@ -120,74 +146,287 @@ const ACC_NOTE = {
   unknown: 'The issuer advertises no domain to verify.',
 };
 
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g,
-  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const LEVELS = ['clear', 'low', 'medium', 'high', 'critical'];
+
+// el builds a node and sets only textContent, so no issuer-controlled string
+// ever reaches the parser. Assigning markup through an HTML-parsing sink
+// anywhere in this file is a stored-XSS bug; internal/api/ui_test.go fails
+// the build if one is added.
+function el(tag, cls, text) {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text !== undefined && text !== null) node.textContent = String(text);
+  return node;
+}
+
+function sevClass(level) {
+  return LEVELS.indexOf(level) === -1 ? '' : 'sev-' + level;
+}
+
+// safeURL admits only http(s). An href is issuer-controlled, so javascript:
+// and data: schemes must not survive into the document.
+function safeURL(value) {
+  try {
+    const u = new URL(String(value), window.location.origin);
+    if (u.protocol === 'http:' || u.protocol === 'https:') return u.href;
+  } catch (e) { /* not a URL at all */ }
+  return null;
+}
+
+function note(text, cls) { return el('p', cls || 'note', text); }
+
+function errorBox(title, detail, extra) {
+  const box = el('div', 'err');
+  box.append(el('strong', null, title), document.createTextNode(' ' + String(detail || '')));
+  if (extra) box.append(note(extra));
+  return box;
+}
+
+function fmtTime(value) {
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return value ? String(value) : 'unknown time';
+  return d.toISOString().replace('T', ' ').replace('.000Z', 'Z');
+}
+
+// setURL keeps the address bar in step with the scan. A verdict is shareable as
+// a link, so every scan re-states the query it answered.
+function setURL(asset) {
+  const url = new URL(window.location.href);
+  if (url.searchParams.get('asset') === asset) return;
+  url.searchParams.set('asset', asset);
+  history.pushState({ asset: asset }, '', url);
+}
 
 document.querySelectorAll('.ex').forEach(b =>
   b.addEventListener('click', () => { input.value = b.dataset.a; scan(); }));
 
 document.getElementById('f').addEventListener('submit', e => { e.preventDefault(); scan(); });
 
+window.addEventListener('popstate', () => {
+  const asset = new URLSearchParams(window.location.search).get('asset');
+  if (asset) { input.value = asset; scan(); }
+});
+
 async function scan() {
   const asset = input.value.trim();
   if (!asset) return;
+  setURL(asset);
   go.disabled = true;
-  out.innerHTML = '<p class="note">Scanning…</p>';
+  out.replaceChildren(note('Scanning…'));
   try {
     const r = await fetch('/api/v1/scan?asset=' + encodeURIComponent(asset));
     const body = await r.json();
     if (!r.ok) {
-      out.innerHTML = `<div class="err"><strong>Could not scan.</strong> ${esc(body.error)}
-        <p class="note">This is not a safety result. Assay reports only what it fetched.</p></div>`;
+      out.replaceChildren(errorBox('Could not scan.', body.error,
+        'This is not a safety result. Assay reports only what it fetched.'));
       return;
     }
-    render(body);
+    await render(body, r.headers.get('X-Assay-Undetermined') === 'true', asset);
   } catch (err) {
-    out.innerHTML = `<div class="err"><strong>Request failed.</strong> ${esc(err.message)}</div>`;
+    out.replaceChildren(errorBox('Request failed.', err.message));
   } finally {
     go.disabled = false;
   }
 }
 
-function render(rep) {
-  const esc_ = esc;
-  const escalated = rep.escalated
-    ? `<p class="note">Escalated from <strong>${esc_(rep.base_severity)}</strong> by curated reputation evidence.</p>`
-    : '';
+async function render(rep, undeterminedHeader, asset) {
+  const frag = document.createDocumentFragment();
 
-  const findings = rep.findings.map(f => `
-    <div class="finding sev-${esc_(f.severity)}">
-      <div class="head">
-        <span class="title">${esc_(f.title)}</span>
-        <span class="badge sev-${esc_(f.severity)}">${esc_(f.severity)}${f.escalation ? ' · escalation' : ''}</span>
-      </div>
-      <p class="reasoning">${esc_(f.reasoning)}</p>
-      ${f.mechanics && f.mechanics.length
-        ? `<div class="flags">${f.mechanics.map(esc_).join(' · ')}</div>` : ''}
-      ${f.evidence && f.evidence.length ? `<ul class="evidence">${f.evidence.map(ev => `
-        <li><span class="src">${esc_(ev.source)}</span> — ${esc_(ev.claim)}
-          ${ev.url ? `<br><a href="${esc_(ev.url)}" target="_blank" rel="noopener noreferrer">${esc_(ev.url)}</a>` : ''}
-        </li>`).join('')}</ul>` : ''}
-    </div>`).join('');
+  if (rep.stale || rep.state === 'stale') {
+    const b = el('div', 'err banner');
+    b.append(el('strong', null, 'Stale verdict.'), document.createTextNode(' ' +
+      String(rep.stale_reason || 'This observation is older than the policy window.')));
+    b.append(note('A stale verdict was complete when made, but cannot be relied on as a current answer.'));
+    frag.append(b);
+  }
 
-  out.innerHTML = `
-    <div class="axes">
-      <div class="card">
-        <h2>Severity — issuer capability</h2>
-        <div class="level sev-${esc_(rep.severity)}">${esc_(rep.severity)}</div>
-        <p class="note">${esc_(SEV_NOTE[rep.severity] || '')}</p>
-        ${escalated}
-      </div>
-      <div class="card">
-        <h2>Accountability — who stands behind it</h2>
-        <div class="level">${esc_(rep.accountability)}</div>
-        <p class="note">${esc_(ACC_NOTE[rep.accountability] || '')}</p>
-        <p class="note">Reported separately. It never changes the severity.</p>
-      </div>
-    </div>
-    <h3>Per-mechanic reasoning</h3>
-    ${findings}`;
+  if (rep.undetermined || undeterminedHeader) {
+    const b = el('div', 'err banner');
+    b.append(el('strong', null, 'Scan Degraded (Undetermined).'), document.createTextNode(
+      ' One or more external sources were unreachable. Findings may be incomplete.'));
+    b.append(note('This is signaled via the X-Assay-Undetermined header.'));
+    frag.append(b);
+  }
+
+  frag.append(axes(rep));
+  frag.append(el('h2', null, 'Per-mechanic reasoning'));
+  frag.append(findings(rep));
+  frag.append(await historySection(asset));
+
+  out.replaceChildren(frag);
 }
+
+function axes(rep) {
+  const wrap = el('div', 'axes');
+
+  const sevCard = el('div', 'card');
+  sevCard.append(el('h2', null, 'Severity — issuer capability'));
+  sevCard.append(el('div', 'level ' + sevClass(rep.severity), rep.severity));
+  sevCard.append(note(SEV_NOTE[rep.severity] || ''));
+  if (rep.escalated) {
+    const p = el('p', 'note');
+    p.append(document.createTextNode('Escalated from '));
+    p.append(el('strong', null, rep.base_severity));
+    p.append(document.createTextNode(' by curated reputation evidence.'));
+    sevCard.append(p);
+  }
+  wrap.append(sevCard);
+
+  const accCard = el('div', 'card');
+  accCard.append(el('h2', null, 'Accountability — who stands behind it'));
+  accCard.append(el('div', 'level', rep.accountability));
+  accCard.append(note(ACC_NOTE[rep.accountability] || ''));
+  accCard.append(note('Reported separately. It never changes the severity.'));
+  wrap.append(accCard);
+
+  return wrap;
+}
+
+function findings(rep) {
+  const wrap = document.createDocumentFragment();
+  const list = rep.findings || [];
+  if (!list.length) {
+    wrap.append(note('No mechanics were found for this asset.'));
+    return wrap;
+  }
+  for (const f of list) wrap.append(finding(f));
+  return wrap;
+}
+
+function finding(f) {
+  const box = el('div', 'finding ' + sevClass(f.severity));
+
+  const head = el('div', 'head');
+  head.append(el('span', 'title', f.title));
+  head.append(el('span', 'badge ' + sevClass(f.severity),
+    String(f.severity) + (f.escalation ? ' · escalation' : '')));
+  box.append(head);
+
+  box.append(el('p', 'reasoning', f.reasoning));
+
+  if (f.mechanics && f.mechanics.length) {
+    box.append(el('div', 'flags', f.mechanics.join(' · ')));
+  }
+
+  if (f.evidence && f.evidence.length) {
+    const ul = el('ul', 'evidence');
+    for (const ev of f.evidence) {
+      const li = el('li');
+      li.append(el('span', 'src', ev.source), document.createTextNode(' — ' + String(ev.claim)));
+      const href = safeURL(ev.url);
+      if (href) {
+        li.append(el('br'));
+        const a = el('a', null, ev.url);
+        a.href = href;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        li.append(a);
+      }
+      ul.append(li);
+    }
+    box.append(ul);
+  }
+  return box;
+}
+
+async function historySection(asset) {
+  const section = el('section', 'history');
+  section.append(el('h2', null, 'Observation history'));
+  try {
+    const r = await fetch('/api/v1/history?asset=' + encodeURIComponent(asset));
+    const h = await r.json();
+    if (!r.ok) {
+      section.append(note('History is unavailable: ' + String(h.error || r.status)));
+      return section;
+    }
+    renderHistory(section, h);
+  } catch (err) {
+    section.append(note('History is unavailable: ' + String(err.message)));
+  }
+  return section;
+}
+
+function renderHistory(section, h) {
+  const observations = h.observations || [];
+  const transitions = h.transitions || [];
+
+  if (observations.length === 0) {
+    section.append(note('No observations recorded for this asset. An asset that has never ' +
+      'been scanned has an empty history, which is different from an unknown or failing one.'));
+    if (h.reason) section.append(note(h.reason));
+    return;
+  }
+
+  if (observations.length === 1) {
+    section.append(note('One observation recorded. A transition is the difference between two ' +
+      'points in time, so there is nothing to compare against yet — this is not "no change".'));
+  }
+
+  if (h.retention > 0 && h.count >= h.retention) {
+    section.append(note('Possibly truncated: the ' + h.count + ' observations shown equal the ' +
+      'retention cap of ' + h.retention + '. Once the cap is reached the oldest observation is ' +
+      'evicted first, so earlier history may be unavailable.'));
+  }
+
+  const list = el('div', 'history-list');
+  for (let i = observations.length - 1; i >= 0; i--) {
+    list.append(observationNode(observations[i]));
+    if (i > 0 && transitions[i - 1]) list.append(transitionNode(transitions[i - 1]));
+  }
+  section.append(list);
+}
+
+function observationNode(o) {
+  const box = el('div', 'obs');
+
+  const head = el('div', 'obs-head');
+  const time = el('time', 'when', fmtTime(o.at));
+  if (o.at) time.setAttribute('datetime', String(o.at));
+  head.append(time);
+  head.append(el('span', 'badge ' + sevClass(o.severity), o.severity));
+  box.append(head);
+
+  const meta = el('div', 'meta');
+  let completeness = 'complete';
+  if (o.undetermined) {
+    completeness = 'undetermined — ' + ((o.undetermined_checks && o.undetermined_checks.length)
+      ? o.undetermined_checks.join(', ') : 'an unnamed check');
+  }
+  meta.append(document.createTextNode('Completeness: ' + completeness));
+  if (o.base_severity && o.base_severity !== o.severity) {
+    meta.append(document.createTextNode(' · base severity ' + o.base_severity));
+  }
+  box.append(meta);
+
+  return box;
+}
+
+function transitionNode(t) {
+  const box = el('div', 'transition');
+  if (t.state !== 'valid') {
+    box.className = 'transition state-' + String(t.state);
+    box.append(el('strong', null, t.state === 'unknown' ? 'Unknown change' : 'No transition'),
+      document.createTextNode(': ' + String(t.reason || '')));
+    return box;
+  }
+
+  const parts = [];
+  if (t.added_names && t.added_names.length) parts.push('added ' + t.added_names.join(', '));
+  if (t.removed_names && t.removed_names.length) parts.push('removed ' + t.removed_names.join(', '));
+  if (t.severity_before !== t.severity_after) {
+    parts.push('severity ' + t.severity_before + ' → ' + t.severity_after);
+  }
+  let text = parts.length ? parts.join('; ') : 'no capability change';
+  if (t.attribution && t.attribution !== 'none') text += ' (' + t.attribution + ')';
+
+  box.append(el('strong', null, 'Change'), document.createTextNode(': ' + text));
+  return box;
+}
+
+(function init() {
+  const asset = new URLSearchParams(window.location.search).get('asset');
+  if (asset) { input.value = asset; scan(); }
+})();
 </script>
 </body>
 </html>

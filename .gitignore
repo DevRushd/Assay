@@ -6,6 +6,11 @@
 /dist/
 coverage.out
 coverage.html
+coverage.log
+go-test.log
+
+# PR workflow scratch files
+/pr_body.md
 
 # Rust
 /assay-contracts/target/

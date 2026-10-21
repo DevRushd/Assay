@@ -57,6 +57,11 @@ type Observation struct {
 	Base mechanics.Severity `json:"base_severity"`
 	// Severity is the final severity the report produced.
 	Severity mechanics.Severity `json:"severity"`
+	// Accountability is who, if anyone, publicly claims the asset. It is kept
+	// beside severity rather than folded into it, exactly as Report reports it,
+	// so a diff between two saved reports can say whether the claim changed
+	// without re-reading a domain.
+	Accountability mechanics.Accountability `json:"accountability"`
 	// Undetermined reports that a source the observation depends on did not
 	// answer, so the observation is a partial answer and nothing may be
 	// concluded from what it omits.
@@ -64,6 +69,12 @@ type Observation struct {
 	// UndeterminedChecks names the checks that did not complete, so a consumer
 	// can see which axis is missing rather than only that one is.
 	UndeterminedChecks []string `json:"undetermined_checks,omitempty"`
+	// Evidence is the attributed evidence the report carried, one entry per
+	// consumed signal. It is kept so a later comparison can answer "did our
+	// view of the asset change, or did the asset change" — the question a
+	// verifier is left with when an evidence_hash matches no re-scan. See
+	// EvidenceTransition in evidence.go.
+	Evidence []mechanics.Evidence `json:"evidence,omitempty"`
 }
 
 // ObservationFromReport captures an Observation from a completed scan.
@@ -74,12 +85,14 @@ type Observation struct {
 func ObservationFromReport(rep *mechanics.Report) Observation {
 	return Observation{
 		Asset:              rep.Asset,
-		At:                 rep.ScannedAt,
+		At:                 rep.ScannedAt.Time(),
 		Mechanics:          rep.Mechanics,
 		Base:               rep.Base,
 		Severity:           rep.Severity,
+		Accountability:     rep.Accountability,
 		Undetermined:       rep.Undetermined,
 		UndeterminedChecks: append([]string{}, rep.UndeterminedChecks...),
+		Evidence:           append([]mechanics.Evidence{}, rep.Evidence...),
 	}
 }
 

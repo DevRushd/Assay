@@ -33,34 +33,45 @@ than the one your transaction lands in.
 
 So you are trusting the attester. Today that is one key. `evidence_hash` is what
 makes the trust checkable rather than absolute: it commits to the exact evidence
-the scanner read, and anyone can re-scan and recompute it. See
-[contract-interface.md](contract-interface.md).
+the scanner read, and anyone can re-scan and recompute it. The complete
+statement of what the admin key can and cannot do is in [Trust boundary: the
+admin key](contract-interface.md#trust-boundary-the-admin-key).
 
-## 1. Declare the interface
+For a complete breakdown of every party you are trusting (issuer, attester key,
+Horizon, and reputation providers) and the consequences if each is dishonest or
+wrong, see [trust.md](trust.md).
 
-You do not need a dependency on Assay. Declare the parts you call:
+## 1. Depend on the `assay-gate` crate
+
+You do not need a dependency on the registry contract, but you do not need to
+copy-paste its interface either. The parts you call — the `Safety` type, the
+`SafetyRegistry` client, the mechanic bit constants and a policy-checking
+helper — ship as a small `no_std` crate in this repository, versioned with
+the registry's ABI (#469):
+
+```toml
+[dependencies]
+assay-gate = { git = "https://github.com/use-assay/Assay", rev = "<revision of the registry build you target>" }
+```
+
+Pin `rev` to the commit of the registry build you are integrating against —
+the same build recorded in [deployment.md](deployment.md) — rather than to a
+branch. The constants in the crate are the registry's ABI, and the Go engine's
+ABI drift test parses the crate and fails the build if its constants ever
+disagree with the registry contract or with `internal/mechanics`, so a pinned
+revision cannot silently renumber a bit under you. Then:
 
 ```rust
-use soroban_sdk::{contractclient, contracttype, Address, BytesN, Env};
-
-/// Field names and types are ABI — they must match the registry exactly,
-/// because a #[contracttype] struct crosses the boundary as a map keyed by
-/// these names.
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Safety {
-    pub severity: u32,
-    pub flags: u32,
-    pub evidence_hash: BytesN<32>,
-    pub attested_at: u64,
-}
-
-#[contractclient(name = "SafetyRegistryClient")]
-pub trait SafetyRegistry {
-    fn get_safety(env: Env, asset: Address) -> Option<Safety>;
-    fn is_safe(env: Env, asset: Address, max_severity: u32, max_age_secs: u64) -> bool;
-}
+use assay_gate::{Safety, SafetyRegistryClient, CAPABILITY_MASK,
+    MECH_AUTH_REVOCABLE, MECH_CLAWBACK_ENABLED};
 ```
+
+`Safety` crosses the contract boundary as a map keyed by its field names, so
+its names and types are ABI — which is exactly why they live in one
+drift-tested crate rather than in every gate that copies them. What each bit
+means is in the table below; `CAPABILITY_MASK` selects the three power bits
+and exists because picking "the dangerous bits" by hand is how
+[#26](https://github.com/use-assay/Assay/issues/26) happened.
 
 ## 2. Decide what you are refusing
 
@@ -111,26 +122,30 @@ The reason is structural. Reputation escalation raises `severity` and sets
 bits describe what the issuer *can do*, and a scam listing is not a capability.
 So a mask over capability bits cannot see escalation, by design.
 
-Note also that bits `1 << 3` through `1 << 5` are reported, not powers. Refusing
-on `domain_unverified` refuses most of the network, including plenty of assets
-whose issuers can do nothing to you.
+Note also that bits `1 << 3` through `1 << 5` are **reported, not powers** —
+and that boundary now has a name on both sides rather than living in the table:
+`CAPABILITY_MASK` (Rust, in the registry) and `mechanics.CapabilityMask` (Go)
+select exactly the three power bits `auth_required | auth_revocable |
+auth_clawback_enabled`, and the ABI drift test fails the build if the two
+sides ever disagree (issue #34). Refusing on bits outside the mask —
+`domain_unverified`, `blocklisted` — refuses most of the network, including
+plenty of assets whose issuers can do nothing to you.
 
 ## 3. Write the gate
 
 ```rust
-pub const MECH_AUTH_REVOCABLE: u32 = 1 << 1;
-pub const MECH_CLAWBACK_ENABLED: u32 = 1 << 2;
+use assay_gate::{CAPABILITY_MASK, MECH_AUTH_REVOCABLE, MECH_CLAWBACK_ENABLED};
 
-/// Powers a custodial balance cannot survive.
+/// Powers a custodial balance cannot survive: the freeze and clawback bits
+/// selected through the crate's exported capability mask rather than
+/// hand-rolled from memory. CAPABILITY_MASK is all three power bits;
+/// picking bits by hand is how #26 happened.
 pub const REFUSED_MECHANICS: u32 = MECH_AUTH_REVOCABLE | MECH_CLAWBACK_ENABLED;
 
-/// The other half. Without this, an asset that is critical purely by
-/// reputation — no capability bits set — passes the mask above and is
-/// admitted. See DOGE in the previous section.
+/// Documented defaults for the deployed gate. These are not hidden globals;
+/// they are stored in instance state at construction and are therefore visible
+/// to every caller and reviewer.
 pub const MAX_SEVERITY: u32 = 2;
-
-/// Your policy, not Assay's. A deposit gate and a large settlement should not
-/// be forced to agree on how fresh is fresh enough.
 pub const MAX_ATTESTATION_AGE: u64 = 24 * 60 * 60;
 
 fn assert_safe(env: &Env, registry: &Address, asset: &Address) -> Result<(), Error> {
@@ -167,6 +182,14 @@ mask. Every capability bit does have a severity, so for the assets in the table
 above the mask appears to subsume it — right up to an asset like DOGE whose
 severity comes from somewhere the mask cannot see.
 
+The whole `assert_safe` judgment — staleness, then the ceiling, then the
+mask — is also packaged in the crate as `assay_gate::check_policy`, which
+returns which of the three refusals applies. The example gate in this
+repository uses it (see
+[`contracts/example-gate`](../assay-contracts/contracts/example-gate)); the
+explicit version above stays here because reading the three checks spelled out
+is the fastest way to see why none of them is redundant.
+
 On choosing `MAX_ATTESTATION_AGE`: [freshness.md](freshness.md) measures how
 often issuer flags actually change, names the use classes that need different
 windows, and marks every recommended number as a provisional default. Read it
@@ -179,12 +202,22 @@ Then call it before you act, in the same transaction:
 ```rust
 pub fn deposit(env: Env, asset: Address, from: Address, amount: i128) -> Result<(), Error> {
     from.require_auth();
+    if amount <= 0 {
+        return Err(Error::InvalidAmount);
+    }
     let registry: Address = env.storage().instance().get(&DataKey::Registry).unwrap();
     assert_safe(&env, &registry, &asset)?;
-    // ... credit the balance
+    // ... credit the balance (checked_add)
     Ok(())
 }
 ```
+
+> [!WARNING]
+> **Bookkeeping-only demonstration:** The worked example in `contracts/example-gate`
+> only increments an internal balance counter (`storage().persistent()`) to demonstrate
+> atomic safety checking. It does **not** invoke `soroban_sdk::token::Client::transfer`
+> to move tokens. A production vault or gateway custodying real assets must call the token
+> contract (or perform a SAC transfer) to receive funds from `from` before or alongside crediting balances.
 
 ### Or let the registry decide
 
@@ -208,8 +241,21 @@ Take the registry address as a constructor argument rather than hardcoding it,
 so the same wasm works on both networks:
 
 ```rust
-pub fn __constructor(env: Env, registry: Address) {
+pub fn __constructor(
+    env: Env,
+    registry: Address,
+    max_severity: u32,
+    max_age_secs: u64,
+    refused_mechanics: u32,
+) -> Result<(), Error> {
+    if max_severity > 4 {
+        return Err(Error::InvalidPolicy);
+    }
     env.storage().instance().set(&DataKey::Registry, &registry);
+    env.storage().instance().set(&DataKey::MaxSeverity, &max_severity);
+    env.storage().instance().set(&DataKey::MaxAttestationAge, &max_age_secs);
+    env.storage().instance().set(&DataKey::RefusedMechanics, &refused_mechanics);
+    Ok(())
 }
 ```
 
@@ -290,24 +336,144 @@ recorded in [deployment.md](deployment.md).
 
 ## Verifying an attestation yourself
 
-You do not have to take the stored severity on faith. Re-scan the asset and
-recompute the hash:
+You do not have to take the stored severity on faith. `assay verify` automates the check by re-scanning the asset, recomputing the hash, reading the on-chain attestation, and reporting whether they agree:
 
 ```sh
-$ ./assay attestation -raw USDZ-GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR
-3	6	ca9b13a66f3a0a4b43d66dea29a505658447e08eee200d2bdb5e66aa1065fb4d
-
-$ make read ASSET=USDZ-GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR
-{"attested_at":...,"evidence_hash":"ca9b13a6...65fb4d","flags":6,"severity":3}
+$ ./assay verify USDZ-GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR
+agreement: severity 3, flags 6, hash ca9b13a6, age 4h12m0s
 ```
 
-`assay attestation -preimage` prints the exact bytes hashed, so the check can be
-reimplemented in any language. The encoding is specified in
-[contract-interface.md](contract-interface.md).
+The command supports a `-max-age` flag (e.g. `-max-age=24h`) to treat stale attestations as a failure.
+If the hashes differ, it reports the specific disagreeing field and exits non-zero. The mismatch means either the asset's sources changed since the attestation or the attestation does not correspond to the evidence it claims. The hash cannot tell you which — that is what `attested_at` and your own re-scan are for.
 
-If the hashes differ, either the asset's sources changed since the attestation
-or the attestation does not correspond to the evidence it claims. The hash
-cannot tell you which — that is what `attested_at` and your own re-scan are for.
+`assay attestation -preimage` prints the exact bytes hashed, so the check can be reimplemented in any language. The encoding is specified in [contract-interface.md](contract-interface.md).
+
+This is the two-command sketch. [verifying.md](verifying.md) is the full
+procedure: deriving the address for the network, reading the attestation, the
+`undetermined` scan that makes verification impossible rather than failed, and
+the third cause of a mismatch — the verifier's own environment, which is
+[#24](https://github.com/use-assay/Assay/issues/24) and is not fixed yet.
+### Or let the CLI do all three steps
+
+`assay verify` (issue #39) performs the re-scan, the hash recomputation and the
+on-chain read in one command, and exits non-zero on anything other than
+agreement:
+
+```sh
+$ ./assay verify USDZ-GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR
+AGREE: USDZ-GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR
+on-chain attestation matches the live scan
+$ echo $?
+0
+```
+
+The outcomes are deliberately distinct — four different messages and four
+different exit codes — because "the attestation disagrees" and "there is no
+attestation" demand different reactions from a gate operator:
+
+| Outcome | Meaning | Exit code |
+| --- | --- | --- |
+| `agree` | scan, recomputed hash and chain all match | 0 |
+| `stale` | they match, but the attestation is older than `-max-age` seconds | 2 |
+| `mismatch` | one or more of `severity`, `flags`, `evidence_hash` differ; the differing fields are named | 1 |
+| `absent` | no attestation on chain for this asset | 3 |
+| `unverifiable` | the scan is undetermined (or otherwise nothing attestable), so no verdict is possible | 4 |
+
+An undetermined scan **never** reports agreement: the command refuses to
+compare a partial answer against the chain, reporting `unverifiable` instead.
+Staleness is only judged when you pass `-max-age <seconds>`; without it a
+matching attestation agrees regardless of age, because freshness policy
+belongs to the caller (the same policy `is_safe`'s `max_age_secs` encodes
+on-chain).
+
+```sh
+# fail the check when the attestation is more than an hour old
+./assay verify -max-age 3600 USDZ-GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR
+
+# machine-readable verdict for scripts
+./assay verify -json AQUA-GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA
+```
+
+The command reads the registry through the same simulated `get_safety` call
+`make read` uses, so verifying costs nothing and needs no signature. The
+registry id and network default to the live testnet deployment recorded in
+[deployment.md](deployment.md); override with `ASSAY_CONTRACT_ID` and
+`ASSAY_NETWORK` to verify against another deployment.
+## Indexing registry events
+
+An indexer is what notices a withdrawn attestation: `get_safety` returns `None`
+for both never-attested and revoked, and an overwrite replaces the old value in
+storage. The events are the only record of either. The shapes are specified in
+[contract-interface.md](contract-interface.md#attestation-events); this is how to
+consume them.
+
+### What to subscribe to
+
+Filter on the registry contract id and the two-topic layout `(label, asset)`:
+
+| Event | Topic 0 | Topic 1 | Data (a `Map<Symbol, _>`) |
+| --- | --- | --- | --- |
+| attest (one per `attest`, and one per element of `attest_many`, in batch order) | `Symbol("attest")` | asset SAC `Address` | `severity: u32`, `flags: u32`, `attested_at: u64` |
+| revoke | `Symbol("revoke")` | asset SAC `Address` | `revoked_at: u64` |
+
+A `revoke` is the only signal that an attestation was withdrawn on purpose.
+Storage archival publishes **no** event: an archived attestation is restored on
+access and reads back unchanged, so an asset that has gone quiet is not a
+revoked asset. Treat an asset as revoked only after seeing its `revoke` event,
+and as currently attested only if its latest event is an `attest`. Rejected
+calls publish nothing, so every event you see is a write that happened.
+
+### A worked `getEvents` request
+
+Topic filters take base64 XDR `ScVal`s, and `*` matches any single topic. The
+real values: `Symbol("attest")` is `AAAADwAAAAZhdHRlc3QAAA==`, `Symbol("revoke")` is
+`AAAADwAAAAZyZXZva2UAAA==`, and the asset topic below is the testnet SAC address
+`CDJF2JQINO7WRFXB2AAHLONFDPPI4M3W2UM5THGQQ7JMJDIEJYC4CMPG` (AQUA, see
+[section 5](#5-look-up-an-assets-address)). This request returns every attest and
+revoke for that asset on the testnet registry, starting from a ledger you choose:
+
+```sh
+curl -s https://soroban-testnet.stellar.org -H 'content-type: application/json' -d '{
+  "jsonrpc": "2.0", "id": 1, "method": "getEvents",
+  "params": {
+    "startLedger": 3000000,
+    "filters": [{
+      "type": "contract",
+      "contractIds": ["CBK4FBIHMDTXCUPE4E3ZDVSFJSCY5FJETTKNIQPN4LFJIKKIBLKIXQ73"],
+      "topics": [["*", "AAAAEgAAAAHSXSYIa79oluHQAHW5pRvejjN21RnZnNCH0sSNBE4FwQ=="]]
+    }],
+    "pagination": { "limit": 200 }
+  }
+}'
+```
+
+The second topic above is the XDR for a contract address (`ScVal` type 18,
+address type 1, then the 32 raw bytes of the SAC id). Build it for your asset
+rather than copying it: `assay registry-history` does the whole round trip and
+is the reference implementation (`cmd/assay/registry_history.go`).
+
+```sh
+assay registry-history AQUA-GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA
+```
+
+Each result has `ledger`, `ledgerClosedAt`, `topic[]`, `value` (the data map as
+XDR), `txHash` and a `cursor` to pass back in `pagination.cursor` for the next
+page. Pages come back in ledger order.
+
+### Retention: what you cannot see
+
+`getEvents` is served from the RPC node's own window of recent ledgers, not from
+the chain forever. `getHealth` reports `oldestLedger`, `latestLedger` and
+`ledgerRetentionWindow`; the stellar-rpc default window is 17,280 ledgers (about
+24 hours) and hosted providers choose their own. A request with `startLedger`
+older than `oldestLedger` is rejected, and anything before it is simply absent.
+
+So an indexer that starts late, or that is down for longer than the window,
+**has a gap it cannot refill from RPC**. An empty result means "no events in the
+window", not "never attested". Run the indexer continuously, persist the last
+processed ledger and cursor, and archive events yourself if you need a history
+longer than your RPC's window. The registry's own retention note is in
+[contract-interface.md](contract-interface.md#attestation-events).
 
 ## Before you rely on this
 
@@ -316,8 +482,13 @@ cannot tell you which — that is what `attested_at` and your own re-scan are fo
   must treat as "unknown", and which — if you gate correctly — means your
   contract refuses nearly every asset on the network.
 - **One key can write any attestation.** There is no multisig and no threshold
-  of independent attesters yet.
+  of independent attesters yet. The complete statement of powers and limits is
+  in [Trust boundary: the admin key](contract-interface.md#trust-boundary-the-admin-key).
 - **Nothing refreshes the attestations.** They are exactly as fresh as their
   `attested_at`. Choose a `max_age_secs` you would actually accept.
-- Testnet is periodically reset, and Soroban persistent entries expire if their
-  TTL is not extended. Either will remove these attestations.
+- Testnet is periodically reset, which removes these attestations. The live
+  registry's entries are also archived (see
+  [deployment.md](deployment.md#entry-lifetime)). An archived attestation is
+  restored when read, with its original `attested_at`, and your transaction pays
+  the restore fee. It does **not** read as `None`, so only `max_age_secs`
+  protects you from an old one.

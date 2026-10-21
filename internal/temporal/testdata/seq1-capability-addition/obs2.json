@@ -1,0 +1,8 @@
+{
+  "asset": {"code": "DOGE", "issuer": "GA22IDJNHUMC3XKUCCBFNTQIJOUBWINC5GCXHLJ2V6KZ3OWAXCULNQ7P"},
+  "at": "2026-09-08T00:00:00Z",
+  "mechanics": 2,
+  "base_severity": "medium",
+  "severity": "medium",
+  "undetermined": false
+}

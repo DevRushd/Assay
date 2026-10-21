@@ -83,6 +83,25 @@
       ]
     },
     {
+      "fixture": "usdz-clawback-regulated",
+      "asset": "USDZ-GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR",
+      "label": "legitimate",
+      "base_severity": "high",
+      "severity": "high",
+      "escalated": false,
+      "accountability": "verified",
+      "mechanics": ["auth_revocable", "auth_clawback_enabled"],
+      "capture_date": "2026-09-27",
+      "notes": "Confirmed-legitimate clawback control asset. Issuer verified independently via the zeam.money stellar.toml, which lists USDZ under [[CURRENCIES]] with matching issuer, and via the [DOCUMENTATION] block naming ZEAM LIMITED with FSCA (South Africa) licensing.",
+      "source_urls": [
+        "https://horizon.stellar.org/assets?asset_code=USDZ&asset_issuer=GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR",
+        "https://horizon.stellar.org/accounts/GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR",
+        "https://zeam.money/.well-known/stellar.toml",
+        "https://api.stellar.expert/explorer/directory/blocked-domains/zeam.money",
+        "https://api.stellar.expert/explorer/directory/GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR"
+      ]
+    },
+    {
       "fixture": "usdc-revocable-regulated",
       "asset": "USDC-GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
       "label": "legitimate",
@@ -134,6 +153,61 @@
         "https://darkpool.digital/.well-known/stellar.toml",
         "https://api.stellar.expert/explorer/directory/blocked-domains/darkpool.digital",
         "https://api.stellar.expert/explorer/directory/GA22IDJNHUMC3XKUCCBFNTQIJOUBWINC5GCXHLJ2V6KZ3OWAXCULNQ7P"
+      ]
+    },
+    {
+      "fixture": "doge-reputation-outage",
+      "asset": "DOGE-GA22IDJNHUMC3XKUCCBFNTQIJOUBWINC5GCXHLJ2V6KZ3OWAXCULNQ7P",
+      "label": "degraded",
+      "base_severity": "clear",
+      "severity": "clear",
+      "escalated": false,
+      "undetermined": true,
+      "accountability": "unverified",
+      "mechanics": ["domain_unverified"],
+      "capture_date": "2026-08-10",
+      "notes": "Same real asset as doge-noflags-scam, captured with the StellarExpert directory that carries its malicious tag unavailable. directory.err records the failure; the blocklist endpoint answered blocked=false, so the source that would have escalated is the one that failed. The honest verdict is undetermined, not clear (issue #23).",
+      "source_urls": [
+        "https://horizon.stellar.org/assets?asset_code=DOGE&asset_issuer=GA22IDJNHUMC3XKUCCBFNTQIJOUBWINC5GCXHLJ2V6KZ3OWAXCULNQ7P",
+        "https://horizon.stellar.org/accounts/GA22IDJNHUMC3XKUCCBFNTQIJOUBWINC5GCXHLJ2V6KZ3OWAXCULNQ7P",
+        "https://darkpool.digital/.well-known/stellar.toml",
+        "https://api.stellar.expert/explorer/directory/blocked-domains/darkpool.digital",
+        "https://api.stellar.expert/explorer/directory/GA22IDJNHUMC3XKUCCBFNTQIJOUBWINC5GCXHLJ2V6KZ3OWAXCULNQ7P"
+      ]
+    },
+    {
+      "fixture": "velo-no-home-domain",
+      "asset": "VELO-GDM4RQUQQUVSKQA7S6EM7XBZP3FCGH4Q7CL6TABQ7B2BEJ5ERARM2M5M",
+      "label": "legitimate",
+      "base_severity": "clear",
+      "severity": "clear",
+      "escalated": false,
+      "accountability": "unknown",
+      "mechanics": ["domain_unverified"],
+      "capture_date": "2026-09-28",
+      "source_urls": [
+        "https://horizon.stellar.org/assets?asset_code=VELO&asset_issuer=GDM4RQUQQUVSKQA7S6EM7XBZP3FCGH4Q7CL6TABQ7B2BEJ5ERARM2M5M",
+        "https://horizon.stellar.org/accounts/GDM4RQUQQUVSKQA7S6EM7XBZP3FCGH4Q7CL6TABQ7B2BEJ5ERARM2M5M",
+        "https://api.stellar.expert/explorer/directory/GDM4RQUQQUVSKQA7S6EM7XBZP3FCGH4Q7CL6TABQ7B2BEJ5ERARM2M5M"
+      ]
+    },
+    {
+      "fixture": "synthetic-redirect-off-host",
+      "asset": "AQUA-GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA",
+      "label": "legitimate",
+      "base_severity": "clear",
+      "severity": "clear",
+      "escalated": false,
+      "accountability": "unverified",
+      "mechanics": ["domain_unverified"],
+      "capture_date": "2026-08-10",
+      "notes": "Synthetic fixture exercising the cross-host redirect refusal rule (#380). The issuer advertises home_domain redirect.example, whose stellar.toml redirects to other.example, which is refused. Accountability is unverified and the report states the refused host.",
+      "source_urls": [
+        "https://horizon.stellar.org/assets?asset_code=AQUA&asset_issuer=GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA",
+        "https://horizon.stellar.org/accounts/GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA",
+        "https://redirect.example/.well-known/stellar.toml",
+        "https://api.stellar.expert/explorer/directory/blocked-domains/redirect.example",
+        "https://api.stellar.expert/explorer/directory/GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA"
       ]
     }
   ]

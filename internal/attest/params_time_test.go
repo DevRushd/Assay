@@ -35,7 +35,7 @@ func TestScannedAtTimePrecisionIsPinned(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			params, err := attest.FromReport(report(func(r *mechanics.Report) {
-				r.ScannedAt = time.Date(2026, 9, 24, 12, 0, 0, tc.nano, time.UTC)
+				r.ScannedAt = mechanics.NewCanonicalTime(time.Date(2026, 9, 24, 12, 0, 0, tc.nano, time.UTC))
 			}))
 			if err != nil {
 				t.Fatalf("FromReport: %v", err)
@@ -55,7 +55,7 @@ func TestScannedAtTimePrecisionIsPinned(t *testing.T) {
 func TestScannedAtTimeIsUTCHoweverTheReportWasMade(t *testing.T) {
 	loc := time.FixedZone("UTC+5:30", 5*3600+1800)
 	params, err := attest.FromReport(report(func(r *mechanics.Report) {
-		r.ScannedAt = time.Date(2026, 9, 24, 17, 30, 0, 0, loc) // = 12:00:00Z
+		r.ScannedAt = mechanics.NewCanonicalTime(time.Date(2026, 9, 24, 17, 30, 0, 0, loc)) // = 12:00:00Z
 	}))
 	if err != nil {
 		t.Fatalf("FromReport: %v", err)
@@ -84,7 +84,7 @@ func TestScannedAtTimeUnixSecondRoundTrip(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			params, err := attest.FromReport(report(func(r *mechanics.Report) {
-				r.ScannedAt = tc.at
+				r.ScannedAt = mechanics.NewCanonicalTime(tc.at)
 			}))
 			if err != nil {
 				t.Fatalf("FromReport: %v", err)

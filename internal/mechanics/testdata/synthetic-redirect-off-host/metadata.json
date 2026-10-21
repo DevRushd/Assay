@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "subject": "synthetic-redirect-off-host",
+  "why": "a home_domain whose stellar.toml redirects to an unrelated host, which the redirect rule refuses: accountability must be unverified and evidence must name the refused host (#380)",
+  "files": [
+    {"file": "asset.json", "url": "https://horizon.stellar.org/assets?asset_code=AQUA&asset_issuer=GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA", "captured": "2026-08-10", "note": "synthetic payload derived from the aqua-clear-verified capture (#380)"},
+    {"file": "account.json", "url": "https://horizon.stellar.org/accounts/GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA", "captured": "2026-08-10", "note": "synthetic payload derived from the aqua-clear-verified capture, with home_domain set to redirect.example (#380)"},
+    {"file": "stellar.toml.err", "url": "https://redirect.example/.well-known/stellar.toml", "captured": "2026-10-16", "note": "constructed error marker recording the cross-host redirect refusal to other.example (#380)"},
+    {"file": "blocked.json", "url": "https://api.stellar.expert/explorer/directory/blocked-domains/redirect.example", "captured": "2026-08-10", "note": "synthetic payload derived from the aqua-clear-verified capture (#380)"},
+    {"file": "directory.json", "url": "https://api.stellar.expert/explorer/directory/GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA", "captured": "2026-08-10", "note": "synthetic payload derived from the aqua-clear-verified capture (#380)"}
+  ],
+  "expected": {
+    "state": "valid",
+    "base": "clear",
+    "severity": "clear",
+    "escalated": false,
+    "undetermined": false,
+    "accountability": "unverified",
+    "checks": {
+      "capability": {"severity": "clear"},
+      "mutability": {"severity": "clear"},
+      "sep1-domain": {"severity": "clear", "mechanics": ["domain_unverified"]},
+      "reputation": {"severity": "clear", "escalation": true}
+    }
+  }
+}

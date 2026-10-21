@@ -94,7 +94,7 @@ func TestObservationFromReportCopies(t *testing.T) {
 		Mechanics:          mechanics.MechBlocklisted,
 		Undetermined:       true,
 		UndeterminedChecks: []string{"reputation"},
-		ScannedAt:          at(3),
+		ScannedAt:          mechanics.NewCanonicalTime(at(3)),
 	}
 
 	o := temporal.ObservationFromReport(rep)

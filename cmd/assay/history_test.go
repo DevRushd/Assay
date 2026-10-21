@@ -1,7 +1,14 @@
 package main
 
 import (
+	"context"
+
 	"encoding/json"
+	"github.com/use-assay/assay/internal/api"
+	"io"
+	"log/slog"
+	"net"
+	"net/http"
 	"testing"
 	"time"
 
@@ -17,13 +24,13 @@ func TestHistoryJSON(t *testing.T) {
 				Source:      "horizon",
 				URL:         "https://horizon.stellar.org/assets?asset_code=AQUA&asset_issuer=GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA",
 				Claim:       "issuer flags: auth_required=false auth_revocable=false auth_immutable=false auth_clawback_enabled=false",
-				RetrievedAt: now,
+				RetrievedAt: mechanics.NewCanonicalTime(now),
 			},
 			{
 				Source:      "stellar.expert/directory",
 				URL:         "https://api.stellar.expert/explorer/directory/GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA",
 				Claim:       "listed as \"Zeam.Money\" (domain \"zeam.money\", tags: )",
-				RetrievedAt: now.Add(1 * time.Hour),
+				RetrievedAt: mechanics.NewCanonicalTime(now.Add(1 * time.Hour)),
 			},
 		},
 	}
@@ -78,7 +85,7 @@ func TestHistoryRaw(t *testing.T) {
 				Source:      "horizon",
 				URL:         "https://horizon.stellar.org/assets?asset_code=AQUA&asset_issuer=GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA",
 				Claim:       "issuer flags: auth_required=false auth_revocable=false auth_immutable=false auth_clawback_enabled=false",
-				RetrievedAt: now,
+				RetrievedAt: mechanics.NewCanonicalTime(now),
 			},
 		},
 	}
@@ -138,5 +145,72 @@ func TestHistoryJSONMarshal(t *testing.T) {
 	}
 	if len(round) != 1 || round[0].Asset != hist[0].Asset || round[0].Transition != hist[0].Transition {
 		t.Errorf("JSON round-trip mismatch: %s", b)
+	}
+}
+
+func TestServerTimeoutsAndGracefulShutdown(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	handler := api.NewServer(log).Handler()
+
+	srv := &http.Server{
+		Addr:              "127.0.0.1:0",
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+
+	if srv.WriteTimeout != 60*time.Second {
+		t.Errorf("WriteTimeout = %v, want 60s", srv.WriteTimeout)
+	}
+	if srv.IdleTimeout != 120*time.Second {
+		t.Errorf("IdleTimeout = %v, want 120s", srv.IdleTimeout)
+	}
+	if srv.ReadHeaderTimeout != 10*time.Second {
+		t.Errorf("ReadHeaderTimeout = %v, want 10s", srv.ReadHeaderTimeout)
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+
+	errChan := make(chan error, 1)
+	go func() {
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+			errChan <- err
+		}
+	}()
+
+	client := &http.Client{}
+	resp, err := client.Get("http://" + ln.Addr().String() + "/healthz")
+	if err != nil {
+		t.Fatalf("GET /healthz: %v", err)
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Errorf("close response body: %v", err)
+		}
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		t.Errorf("Shutdown failed: %v", err)
+	}
+
+	_ = ln.Close()
+
+	select {
+	case err := <-errChan:
+		if err != nil {
+			t.Errorf("server error: %v", err)
+		}
+	default:
 	}
 }

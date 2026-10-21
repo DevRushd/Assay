@@ -1,0 +1,8 @@
+{
+  "asset": {"code": "USDC", "issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"},
+  "at": "2026-09-01T00:00:00Z",
+  "mechanics": 18,
+  "base_severity": "medium",
+  "severity": "medium",
+  "undetermined": false
+}

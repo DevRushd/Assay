@@ -3,48 +3,34 @@
 //!
 //! This is the smallest contract that refuses to accept a deposit in an asset
 //! whose issuer can take it back. It exists to be copied: everything an
-//! integrator needs is in this file, and it depends on nothing from Assay at
-//! build time — only on the deployed registry's interface, declared below.
+//! integrator needs is either in this file or in the `assay-gate` crate it
+//! depends on — the registry interface, the `Safety` type and the bit
+//! constants live there, versioned with the registry's ABI, so this example
+//! keeps no private copy that can drift from the deployed registry. At build
+//! time it depends only on that interface crate; at run time it still talks to
+//! a deployed registry address it was constructed with.
 //!
-//! It is deliberately not a vault. It stores a balance and nothing else, so
-//! the only thing worth reading here is the gate.
+//! It is deliberately not a vault. It stores a balance and nothing else (it
+//! performs bookkeeping only and moves no tokens — see [`deposit`](ExampleGate::deposit)),
+//! so the only thing worth reading here is the gate.
 //!
 //! See `docs/integrating.md` for the deployed testnet registry address and the
 //! deploy command that wires it in.
 
-use soroban_sdk::{
-    contract, contractclient, contracterror, contractimpl, contracttype, Address, BytesN, Env,
+use soroban_sdk::{contract, contracterror, contractimpl, contracttype, Address, Env};
+
+// ---------------------------------------------------------------------------
+// The registry interface, as an integrator consumes it.
+// ---------------------------------------------------------------------------
+
+// The `Safety` type, `SafetyRegistryClient` and the `MECH_*` bits come from
+// the `assay-gate` crate — the interface a third-party integrator depends on
+// (#469). Re-declaring them here is how copy-pasted gates end up calling a
+// different ABI than the one deployed. `Safety` is not named below: it
+// arrives as the client's return type.
+use assay_gate::{
+    check_policy, PolicyViolation, SafetyRegistryClient, MECH_AUTH_REVOCABLE, MECH_CLAWBACK_ENABLED,
 };
-
-// ---------------------------------------------------------------------------
-// The registry interface, as an integrator declares it.
-// ---------------------------------------------------------------------------
-
-/// Mirror of the registry's stored attestation.
-///
-/// Field names and types are ABI: they must match the registry exactly, because
-/// a `#[contracttype]` struct crosses the contract boundary as a map keyed by
-/// these names.
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Safety {
-    pub severity: u32,
-    pub flags: u32,
-    pub evidence_hash: BytesN<32>,
-    pub attested_at: u64,
-}
-
-/// The part of the registry this gate calls.
-#[contractclient(name = "SafetyRegistryClient")]
-pub trait SafetyRegistry {
-    fn get_safety(env: Env, asset: Address) -> Option<Safety>;
-    fn is_safe(env: Env, asset: Address, max_severity: u32, max_age_secs: u64) -> bool;
-}
-
-/// The issuer can confiscate a holder's balance outright (`1 << 2`).
-pub const MECH_CLAWBACK_ENABLED: u32 = 1 << 2;
-/// The issuer can freeze a holder's balance (`1 << 1`).
-pub const MECH_AUTH_REVOCABLE: u32 = 1 << 1;
 
 /// Mechanics this gate refuses outright, whatever the severity number says.
 ///
@@ -76,6 +62,10 @@ pub const REFUSED_MECHANICS: u32 = MECH_CLAWBACK_ENABLED | MECH_AUTH_REVOCABLE;
 /// by construction — and any gate that reads only the mask is blind to half
 /// the severity model.
 pub const MAX_SEVERITY: u32 = 2;
+/// A documented default for the policy stored at construction. The registry is
+/// not upgradeable in place: a policy change requires a new instance behind a
+/// new address, and the docs call that out explicitly.
+pub const DEFAULT_MAX_SEVERITY: u32 = MAX_SEVERITY;
 
 /// How stale an attestation may be before this gate stops trusting it.
 ///
@@ -90,6 +80,9 @@ pub const MAX_SEVERITY: u32 = 2;
 /// this constant — a window without a re-attestation path behind it is a
 /// countdown, and this example has no refresher.
 pub const MAX_ATTESTATION_AGE: u64 = 24 * 60 * 60;
+pub const DEFAULT_MAX_ATTESTATION_AGE: u64 = MAX_ATTESTATION_AGE;
+
+pub const DEFAULT_REFUSED_MECHANICS: u32 = REFUSED_MECHANICS;
 
 // ---------------------------------------------------------------------------
 // The gate.
@@ -99,8 +92,20 @@ pub const MAX_ATTESTATION_AGE: u64 = 24 * 60 * 60;
 enum DataKey {
     /// The Assay registry this gate reads.
     Registry,
+    /// The caller's policy for severity, staleness and blocked mechanics.
+    MaxSeverity,
+    MaxAttestationAge,
+    RefusedMechanics,
     /// Deposited balance per (asset, depositor).
     Balance(Address, Address),
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Policy {
+    pub max_severity: u32,
+    pub max_attestation_age: u64,
+    pub refused_mechanics: u32,
 }
 
 #[contracterror]
@@ -110,16 +115,18 @@ pub enum Error {
     /// No attestation exists for this asset. The gate does not know the asset,
     /// which is not the same as the asset being safe.
     NotAttested = 1,
-    /// The newest attestation is older than [`MAX_ATTESTATION_AGE`].
+    /// The newest attestation is older than the configured freshness policy.
     AttestationStale = 2,
-    /// The issuer holds a power in [`REFUSED_MECHANICS`].
+    /// The issuer holds a power in the configured refused-mechanics mask.
     IssuerCanTakeIt = 3,
-    /// Severity exceeds [`MAX_SEVERITY`]. Kept distinct from
-    /// [`Self::IssuerCanTakeIt`] because the two mean different things to a
-    /// caller: one says the issuer can take your balance, the other says
-    /// someone has affirmatively identified this asset as malicious. A client
-    /// that cannot tell them apart cannot explain either.
+    /// Severity exceeds the configured policy ceiling.
     SeverityTooHigh = 4,
+    /// A caller supplied a policy that is outside the supported range.
+    InvalidPolicy = 5,
+    /// Deposit amount must be positive.
+    InvalidAmount = 6,
+    /// Deposited balance would overflow.
+    BalanceOverflow = 7,
 }
 
 #[contract]
@@ -127,12 +134,62 @@ pub struct ExampleGate;
 
 #[contractimpl]
 impl ExampleGate {
-    /// Binds this gate to a deployed Assay registry.
-    pub fn __constructor(env: Env, registry: Address) {
+    /// Binds this gate to a deployed Assay registry and stores the gate policy.
+    ///
+    /// A policy change requires a redeploy, because Soroban instance storage is
+    /// fixed for a deployed contract. This keeps the decision explicit rather
+    /// than allowing a silent contract upgrade path.
+    pub fn __constructor(
+        env: Env,
+        registry: Address,
+        max_severity: u32,
+        max_age_secs: u64,
+        refused_mechanics: u32,
+    ) -> Result<(), Error> {
+        if max_severity > 4 {
+            return Err(Error::InvalidPolicy);
+        }
+
         env.storage().instance().set(&DataKey::Registry, &registry);
+        env.storage()
+            .instance()
+            .set(&DataKey::MaxSeverity, &max_severity);
+        env.storage()
+            .instance()
+            .set(&DataKey::MaxAttestationAge, &max_age_secs);
+        env.storage()
+            .instance()
+            .set(&DataKey::RefusedMechanics, &refused_mechanics);
+        Ok(())
+    }
+
+    /// Exposes this gate's configured policy: severity ceiling, maximum attestation age,
+    /// and refused mechanics mask as set at construction.
+    pub fn policy(env: Env) -> Policy {
+        Policy {
+            max_severity: env
+                .storage()
+                .instance()
+                .get(&DataKey::MaxSeverity)
+                .unwrap_or(DEFAULT_MAX_SEVERITY),
+            max_attestation_age: env
+                .storage()
+                .instance()
+                .get(&DataKey::MaxAttestationAge)
+                .unwrap_or(DEFAULT_MAX_ATTESTATION_AGE),
+            refused_mechanics: env
+                .storage()
+                .instance()
+                .get(&DataKey::RefusedMechanics)
+                .unwrap_or(DEFAULT_REFUSED_MECHANICS),
+        }
     }
 
     /// Accepts a deposit, but only in an asset the issuer cannot claw back.
+    ///
+    /// NOTE: This worked example records internal bookkeeping only and moves no tokens.
+    /// It increments an internal ledger balance counter and does NOT invoke `token::Client::transfer`.
+    /// Production integrations custodying real assets must call the token contract to transfer funds.
     ///
     /// The read is a cross-contract call in the same transaction as the
     /// deposit, so the attestation cannot change between the check and the
@@ -142,11 +199,16 @@ impl ExampleGate {
     pub fn deposit(env: Env, asset: Address, from: Address, amount: i128) -> Result<(), Error> {
         from.require_auth();
 
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+
         Self::assert_safe(&env, &asset)?;
 
         let key = DataKey::Balance(asset, from);
         let current: i128 = env.storage().persistent().get(&key).unwrap_or(0);
-        env.storage().persistent().set(&key, &(current + amount));
+        let new_balance = current.checked_add(amount).ok_or(Error::BalanceOverflow)?;
+        env.storage().persistent().set(&key, &new_balance);
         Ok(())
     }
 
@@ -183,22 +245,41 @@ impl ExampleGate {
             return Err(Error::NotAttested);
         };
 
-        if env.ledger().timestamp().saturating_sub(safety.attested_at) > MAX_ATTESTATION_AGE {
-            return Err(Error::AttestationStale);
-        }
+        let max_age = env
+            .storage()
+            .instance()
+            .get(&DataKey::MaxAttestationAge)
+            .unwrap_or(DEFAULT_MAX_ATTESTATION_AGE);
+        let max_severity = env
+            .storage()
+            .instance()
+            .get(&DataKey::MaxSeverity)
+            .unwrap_or(DEFAULT_MAX_SEVERITY);
+        let refused_mechanics = env
+            .storage()
+            .instance()
+            .get(&DataKey::RefusedMechanics)
+            .unwrap_or(DEFAULT_REFUSED_MECHANICS);
 
-        // Severity ceiling. Without this, an asset that is critical purely by
-        // reputation — no capability bits set — passes the mask below and is
-        // admitted. See DOGE in the module docs and docs/integrating.md.
-        if safety.severity > MAX_SEVERITY {
-            return Err(Error::SeverityTooHigh);
-        }
-
-        if safety.flags & REFUSED_MECHANICS != 0 {
-            return Err(Error::IssuerCanTakeIt);
-        }
-
-        Ok(())
+        // The judgment half lives in the assay-gate crate (#469): staleness
+        // first, then the severity ceiling — without which an asset that is
+        // critical purely by reputation passes the mask and is admitted (see
+        // DOGE in the module docs and docs/integrating.md) — then the
+        // refused-mechanics mask. Mapping the violation back to this
+        // contract's error keeps every refusal path exactly where a caller
+        // already knows to look.
+        check_policy(
+            &safety,
+            env.ledger().timestamp(),
+            max_severity,
+            max_age,
+            refused_mechanics,
+        )
+        .map_err(|violation| match violation {
+            PolicyViolation::AttestationStale => Error::AttestationStale,
+            PolicyViolation::SeverityTooHigh => Error::SeverityTooHigh,
+            PolicyViolation::IssuerCanTakeIt => Error::IssuerCanTakeIt,
+        })
     }
 }
 

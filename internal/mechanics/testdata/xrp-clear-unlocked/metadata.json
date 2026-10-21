@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "subject": "xrp-clear-unlocked",
+  "why": "the unlocked counterpart to SHX: no auth flags, but auth_immutable is UNSET. The mutability finding must report that without moving base severity off clear.",
+  "files": [
+    {"file": "asset.json", "url": "https://horizon.stellar.org/assets?asset_code=XRP&asset_issuer=GBXRPL45NPHCVMFFAYZVUVFFVKSIZ362ZXFP7I2ETNQ3QKZMFLPRDTD5", "captured": "2026-09-25"},
+    {"file": "account.json", "url": "https://horizon.stellar.org/accounts/GBXRPL45NPHCVMFFAYZVUVFFVKSIZ362ZXFP7I2ETNQ3QKZMFLPRDTD5", "captured": "2026-09-25"},
+    {"file": "stellar.toml", "url": "https://fchain.io/.well-known/stellar.toml", "captured": "2026-09-25"},
+    {"file": "blocked.json", "url": "https://api.stellar.expert/explorer/directory/blocked-domains/fchain.io", "captured": "2026-09-25"},
+    {"file": "directory.json", "url": "https://api.stellar.expert/explorer/directory/GBXRPL45NPHCVMFFAYZVUVFFVKSIZ362ZXFP7I2ETNQ3QKZMFLPRDTD5", "captured": "2026-09-25"}
+  ],
+  "expected": {
+    "state": "valid",
+    "base": "clear",
+    "severity": "clear",
+    "escalated": false,
+    "undetermined": false,
+    "accountability": "verified",
+    "checks": {
+      "capability": {"severity": "clear"},
+      "mutability": {"severity": "clear"},
+      "sep1-domain": {"severity": "clear"},
+      "reputation": {"severity": "clear", "escalation": true}
+    }
+  }
+}

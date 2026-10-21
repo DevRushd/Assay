@@ -31,7 +31,7 @@ func mutSubject(flags horizon.Flags) *mechanics.Subject {
 		Asset:     mechanics.Asset{Code: "TESTTKN", Issuer: issuer},
 		Stat:      &horizon.AssetStat{AssetCode: "TESTTKN", AssetIssuer: issuer, Flags: flags},
 		Issuer:    &horizon.Account{AccountID: issuer, Flags: flags},
-		FetchedAt: time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC),
+		ScannedAt: time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC),
 	}
 }
 
@@ -113,7 +113,7 @@ func TestMutabilityReportsThreeStates(t *testing.T) {
 func TestMutabilityUnreadableFlagsIsUndetermined(t *testing.T) {
 	f := runMut(t, &mechanics.Subject{
 		Asset:     mechanics.Asset{Code: "TESTTKN", Issuer: "GBXRPL45NPHCVMFFAYZVUVFFVKSIZ362ZXFP7I2ETNQ3QKZMFLPRDTD5"},
-		FetchedAt: time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC),
+		ScannedAt: time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC),
 	})
 	if !f.Undetermined {
 		t.Fatal("a missing asset record must mark the mutability finding undetermined")

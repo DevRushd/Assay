@@ -1,92 +1,223 @@
 name: Release
 
+# Tag-driven releases (#278).
+#
+# A tagged build must report the tag as its scanner identity, because
+# attest.ScannerIdentity reads the module version the Go toolchain stamps into
+# the binary — that is what turns version binding from "everything is devel"
+# into a real constraint. `go install github.com/use-assay/assay/cmd/assay@<tag>`
+# is the only build that stamps it: a plain `go build` from a checkout reports
+# `(devel)`. So the release artifact is built with `go install` from the tag,
+# its stamp is verified with `go version -m`, and only then is it published.
+#
+# The tag must be an annotated semver tag on main whose message carries
+# `Preimage: assay-evidence-vN` and `ABI: ...` lines; the notes below are
+# generated from those lines, so a release with no compatibility statement is
+# not possible. See CONTRIBUTING.md ("Releasing").
 on:
   push:
-    tags:
-      - v*
+    tags: ["v*"]
 
 permissions:
-  contents: read
-  attestations: write
+  contents: write # gh release create
+  # The provenance attestation is a Sigstore statement signed with a
+  # short-lived OIDC token minted for this run. Without id-token: write the
+  # attest step cannot sign, and the action fails rather than skipping — which
+  # is the behaviour we want: a release with no attestation must not go up.
   id-token: write
 
 jobs:
-  build:
-    name: Build assay binary
+  release:
+    name: Release
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
+        with:
+          # The annotated tag object (for the Preimage:/ABI: lines) and
+          # origin/main (for the ancestry check) both have to be present.
+          fetch-depth: 0
 
-      - name: Set up Go
-        uses: actions/setup-go@v6
+      # Pinned to the module's own version, as everywhere else: the release
+      # binary's stdlib is part of the artifact, so it must be the Go the
+      # module names, not whatever `stable` happens to be.
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
           cache: true
 
-      - name: Build
-        run: make build
-
-      - name: Upload assay binary
-        uses: actions/upload-artifact@v6
-        with:
-          name: assay-v${{ github.ref_name }}
-          path: assay
-          retention-days: 5
-
-  checksums:
-    name: Write SHA-256 checksums
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Download assay binary
-        uses: actions/download-artifact@v7
-        with:
-          name: assay-v${{ github.ref_name }}
-          path: .
-
-      - name: Generate SHA-256 checksum
+      - name: validate the tag
         run: |
-          sha256sum assay > assay-${{ github.ref_name }}.sha256
-          cat assay-${{ github.ref_name }}.sha256
-
-      - name: Upload checksum file
-        uses: actions/upload-artifact@v6
-        with:
-          name: assay-${{ github.ref_name }}-checksums
-          path: assay-${{ github.ref_name }}.sha256
-          retention-days: 5
-
-  provenance:
-    name: Attest build provenance
-    runs-on: ubuntu-latest
-    needs: [build, checksums]
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Download assay binary
-        uses: actions/download-artifact@v7
-        with:
-          name: assay-v${{ github.ref_name }}
-          path: .
-
-      - name: Verify checksum
-        run: |
-          expected=$(cat assay-${{ github.ref_name }}.sha256 | awk '{print $1}')
-          actual=$(sha256sum assay | awk '{print $1}')
-          if [ "$expected" != "$actual" ]; then
-            echo "checksum mismatch: expected $expected, got $actual" >&2
+          tag="${GITHUB_REF_NAME}"
+          if ! printf '%s' "$tag" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::tag $tag is not vMAJOR.MINOR.PATCH"
             exit 1
           fi
-          echo "checksum verified: $expected"
+          if [ "$(git cat-file -t "refs/tags/$tag")" != "tag" ]; then
+            echo "::error::tag $tag is lightweight; releases are annotated and state Preimage: and ABI:"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$tag^{commit}" origin/main; then
+            echo "::error::tag $tag does not point into main; releases are cut from main"
+            exit 1
+          fi
+          message="$(git for-each-ref "refs/tags/$tag" --format='%(contents)')"
+          if ! printf '%s\n' "$message" | grep -qE '^Preimage: assay-evidence-v[0-9]+$'; then
+            echo "::error::tag message needs a line 'Preimage: assay-evidence-vN'"
+            exit 1
+          fi
+          if ! printf '%s\n' "$message" | grep -qE '^ABI: .+$'; then
+            echo "::error::tag message needs a line 'ABI: ...' (changed, or unchanged and why)"
+            exit 1
+          fi
+          echo "$tag is annotated, points into main, and declares its preimage and ABI."
 
-      - name: Generate build provenance
-        # SHA-pinned per repository policy: workflows must reference GitHub
-        # actions by SHA, not by tag. `ef244123eb79f2f7a7e75d99086184180e6d0018`
-        # is the commit the v1.4.4 tag (`actions/attest-build-provenance`) is a
-        # lightweight pointer to (it appears as both the tag and its peeled
-        # commit target).
-        uses: actions/attest-build-provenance@ef244123eb79f2f7a7e75d99086184180e6d0018
+      - name: build the release binary from the tag
+        env:
+          GOBIN: ${{ github.workspace }}/dist
+          CGO_ENABLED: "0"
+        run: |
+          # Upstream (the canonical module path): the tag is reachable through
+          # the module path and the public proxy. A fork: the canonical path
+          # does not have this tag and no proxy ever will, so point git at the
+          # repository that does, fetch just this module directly, and skip
+          # the checksum database for it (dependencies still come from the
+          # proxy, so the fetch stays fast).
+          if [ "${GITHUB_REPOSITORY}" != "use-assay/assay" ]; then
+            # --add, twice: git replaces, not appends, a plain config value,
+            # and both forms are fetched — with and without the .git suffix.
+            git config --global --add \
+              "url.https://github.com/${GITHUB_REPOSITORY}.insteadOf" \
+              "https://github.com/use-assay/assay"
+            git config --global --add \
+              "url.https://github.com/${GITHUB_REPOSITORY}.insteadOf" \
+              "https://github.com/use-assay/assay.git"
+            export GONOPROXY="github.com/use-assay/assay"
+            export GONOSUMDB="github.com/use-assay/assay"
+          fi
+          go install -trimpath "github.com/use-assay/assay/cmd/assay@${GITHUB_REF_NAME}"
+          ls -l dist
+
+      - name: verify the binary reports the tag
+        run: |
+          # Acceptance for #278, verbatim: go version -m ./assay | grep mod.
+          # internal/version reads this same line from the running binary, so
+          # the eval recorder's version and the v3 preimage's scanner line are
+          # this string.
+          stamp="$(go version -m dist/assay | awk '$1 == "mod" && $2 == "github.com/use-assay/assay" { print $3 }')"
+          echo "module version stamp: ${stamp:-<missing>}"
+          if [ "$stamp" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::binary reports '${stamp:-<missing>}', want ${GITHUB_REF_NAME}; a release must not ship a devel binary"
+            exit 1
+          fi
+          {
+            echo "### Release ${GITHUB_REF_NAME}"
+            echo
+            echo '```'
+            go version -m dist/assay
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: checksum and notes
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          # Every published binary gets a checksum, generated from the artifact
+          # rather than written out by hand: a checksum that only covers the one
+          # artifact someone remembered to name stops covering artifacts the
+          # day the release grows, and it fails open — the missing entry simply
+          # is not verified. assay.sha256 and notes.md are excluded because they
+          # are the checksum file itself and the release body.
+          #
+          # -printf '%P' drops the leading ./ so the recorded name is `assay`,
+          # which is the release asset's name; a subject recorded as `./assay`
+          # would not match what a verifier's downloaded file is called.
+          (
+            cd dist
+            find . -maxdepth 1 -type f ! -name '*.sha256' ! -name 'notes.md' -printf '%P\0' \
+              | LC_ALL=C sort -z \
+              | xargs -0 -r sha256sum > assay.sha256
+          )
+          # An empty checksum file is a release that claims to publish nothing
+          # verifiable. Fail here rather than ship a file that trivially passes.
+          if [ ! -s dist/assay.sha256 ]; then
+            echo "::error::dist/assay.sha256 is empty; no artifact was checksummed"
+            exit 1
+          fi
+          cat dist/assay.sha256
+          message="$(git for-each-ref "refs/tags/$tag" --format='%(contents)')"
+          {
+            echo "Built from the tagged source with"
+            echo "\`go install github.com/use-assay/assay/cmd/assay@${tag}\`, so the binary reports"
+            echo "\`${tag}\` as its module version — the same value bound as \`scanner\` into the v3"
+            echo "evidence preimage (verified with \`go version -m\` before publishing)."
+            echo
+            echo "## Install"
+            echo
+            echo '```sh'
+            echo "go install github.com/use-assay/assay/cmd/assay@${tag}"
+            echo
+            echo "# the installed binary must report the tag it was installed at"
+            echo "go version -m \"\$(command -v assay)\" | grep mod"
+            echo '```'
+            echo
+            echo "## Verify a downloaded binary before you run it"
+            echo
+            echo "Both checks are also written up in [docs/verifying.md]"
+            echo "(https://github.com/use-assay/Assay/blob/main/docs/verifying.md)."
+            echo
+            echo '```sh'
+            echo "# 1. integrity: the download matches the published checksum"
+            echo "sha256sum -c assay.sha256"
+            echo
+            echo "# 2. provenance: this artifact was built by the tagged commit"
+            echo "gh attestation verify assay --repo ${GITHUB_REPOSITORY}"
+            echo '```'
+            echo
+            echo "Check 2 is the one that binds the bytes to the tag. Check 1 compares"
+            echo "two files published by the same release, so on its own it cannot"
+            echo "distinguish a corrupted download from a tampered one; the attestation"
+            echo "is signed by the workflow's OIDC identity and recorded in a public"
+            echo "transparency log, so it can."
+            echo
+            echo "## Compatibility"
+            echo
+            printf '%s\n' "$message" | grep -E '^Preimage: |^ABI: ' | sed 's/^/- /'
+            echo
+            echo "SHA-256: \`$(cut -d' ' -f1 dist/assay.sha256)\`"
+          } > dist/notes.md
+
+      # Attesting before publishing keeps the release gated on the attestation:
+      # the comment above the publish step says publishing is last precisely so
+      # that a release which goes up cannot be un-shipped, and a signature the
+      # builder could not produce is a failure, not something to publish around.
+      #
+      # SHA-pinned per the policy in .github/dependabot.yml: a tag is mutable
+      # upstream, so every step names the exact commit it was read at and Dependabot
+      # keeps it current the same way it keeps version tags current.
+      # actions/attest-build-provenance@v4.2.2
+      - name: attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
         with:
-          subject-path: assay
+          # The binary itself, not assay.sha256. The action also accepts
+          # subject-checksums, but that input *trusts* the digest in the file
+          # rather than re-hashing the artifact — so a bug in the checksum step
+          # above would produce an attestation vouching for bytes that were
+          # never built. subject-path re-computes the digest from the file being
+          # published, which is the claim a verifier is actually relying on.
+          subject-path: dist/assay
+
+      # Publishing is the last step so every check above gates it: a release
+      # that goes up with a wrong or unstamped binary cannot be un-shipped.
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "::error::release ${GITHUB_REF_NAME} already exists; delete it deliberately rather than re-running"
+            exit 1
+          fi
+          gh release create "${GITHUB_REF_NAME}" dist/assay dist/assay.sha256 \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "assay ${GITHUB_REF_NAME}" \
+            --notes-file dist/notes.md \
+            --verify-tag

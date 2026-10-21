@@ -1,0 +1,11 @@
+assay-evidence-v1
+asset	USDZ-GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR
+severity	3
+base_severity	3
+escalated	false
+mechanics	6
+accountability	verified
+evidence	horizon	https://horizon.stellar.org/assets?asset_code=USDZ&asset_issuer=GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR	issuer flags: auth_required=false auth_revocable=true auth_immutable=false auth_clawback_enabled=true
+evidence	stellar.expert/blocked-domains	https://api.stellar.expert/explorer/directory/blocked-domains/zeam.money	domain "zeam.money" blocked=false
+evidence	stellar.expert/directory	https://api.stellar.expert/explorer/directory/GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR	listed as "Zeam.Money" (domain "zeam.money", tags: issuer)
+evidence	stellar.toml	https://zeam.money/.well-known/stellar.toml	CURRENCIES claims USDZ-GAKTLPC4ZV37SSCITQ5IS5AQ4WPF4CF4VZJQPPAROSGXMYOATF5U6XPR
